@@ -134,13 +134,24 @@ Den Link könnt ihr direkt in die WhatsApp-Gruppe für den JGA teilen.
 1. Gastgeber:in öffnet die App → **„Neues Event erstellen“** → Bräutigam-Name
    eintragen, optional Bingo/Missionen/Chaos-Aufgaben anpassen → bekommt einen
    **Event-Code**.
-2. Alle anderen öffnen den Link → **„Event beitreten“** → Code + eigenen Namen
-   eingeben (Bräutigam markiert sich per Checkbox).
+2. Alle anderen öffnen den Link → **„Event beitreten“** → Code, eigenen Namen
+   und ein selbst gewähltes Passwort eingeben (Bräutigam markiert sich per
+   Checkbox). Das Passwort wird nur beim allerersten Beitritt mit diesem
+   Namen vergeben.
 3. Über den Abend: Missionen erledigen & Beweis hochladen, Bingo-Felder
    abhaken, den Chaos-Knopf drücken, Fotos im Feed teilen, abstimmen.
 4. Am Ende: **Abschlussbericht**-Tab zeigt automatisch Sieger:innen,
    Foto-Highlights und Kuriositäten-Statistiken.
 5. Am nächsten Morgen: **Kater**-Tab öffnen und anonym bewerten.
+
+### App geschlossen / anderes Handy?
+
+Auf demselben Gerät merkt sich die App den Login automatisch (Landing-Seite
+zeigt „Weiter zu deinem Event“). Falls der Browser-Speicher geleert wurde
+oder du ein anderes Handy nutzt: einfach nochmal **„Event beitreten“** mit
+**demselben Namen und Passwort** wie beim ersten Mal – die App erkennt den
+Namen wieder und meldet dich mit deinem bisherigen Fortschritt (Punkte,
+Missionen, Bingo-Feld) an, statt ein neues Profil anzulegen.
 
 ---
 

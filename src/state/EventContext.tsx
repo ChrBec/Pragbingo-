@@ -17,11 +17,13 @@ import {
   updateDoc,
   increment,
   getDoc,
+  getDocs,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { auth, db, ensureAnonymousAuth, isFirebaseConfigured, storage } from "../firebase";
 import { randomId, shuffledIndices } from "../lib/ids";
 import { newlyCompletedLines } from "../lib/bingoLines";
+import { hashPassword } from "../lib/hash";
 import {
   DEFAULT_BINGO_TASKS,
   DEFAULT_CHAOS_POOL,
@@ -49,6 +51,7 @@ interface CreateEventInput {
   name: string;
   groomName: string;
   hostName: string;
+  hostPassword: string;
   bingoTasks?: string[];
   missionPool?: string[];
   chaosPool?: string[];
@@ -74,6 +77,7 @@ interface EventContextValue {
     code: string,
     playerName: string,
     isGroom: boolean,
+    password: string,
   ) => Promise<void>;
   rejoin: () => Promise<boolean>;
   leaveEvent: () => void;
@@ -232,9 +236,15 @@ export function EventProvider({ children }: { children: ReactNode }) {
         Math.min(MISSIONS_PER_PLAYER, eventDoc.missionPool.length),
       ).map((text) => ({ id: randomId(), text, status: "open" as const }));
 
+      const passwordHash = await hashPassword(
+        input.hostPassword,
+        `${code}:${input.hostName.trim().toLowerCase()}`,
+      );
+
       const playerDoc: PlayerDoc = {
         id: hostPlayerId,
         name: input.hostName,
+        passwordHash,
         isGroom: false,
         joinedAt: Date.now(),
         points: 0,
@@ -259,16 +269,43 @@ export function EventProvider({ children }: { children: ReactNode }) {
   );
 
   const joinEvent = useCallback(
-    async (code: string, playerName: string, isGroom: boolean) => {
+    async (code: string, playerName: string, isGroom: boolean, password: string) => {
       if (!db) throw new Error("Firebase ist nicht konfiguriert.");
       await ensureAnonymousAuth();
       const upperCode = code.trim().toUpperCase();
+      const trimmedName = playerName.trim();
       const eventSnap = await getDoc(doc(db, "events", upperCode));
       if (!eventSnap.exists()) {
         throw new Error("Kein Event mit diesem Code gefunden.");
       }
       const eventData = eventSnap.data() as EventDoc;
+
+      const playersSnap = await getDocs(collection(db, "events", upperCode, "players"));
+      const existing = playersSnap.docs
+        .map((d) => d.data() as PlayerDoc)
+        .find((p) => p.name.trim().toLowerCase() === trimmedName.toLowerCase());
+
+      if (existing) {
+        const enteredHash = await hashPassword(
+          password,
+          `${upperCode}:${trimmedName.toLowerCase()}`,
+        );
+        if (enteredHash !== existing.passwordHash) {
+          throw new Error(
+            `Der Name „${trimmedName}" ist in diesem Event schon vergeben. Falsches Passwort – bitte erneut versuchen oder einen anderen Namen wählen.`,
+          );
+        }
+        saveSession({ eventCode: upperCode, playerId: existing.id });
+        setCurrentPlayerId(existing.id);
+        subscribeToEvent(upperCode);
+        return;
+      }
+
       const playerId = uid() + "_" + randomId().slice(0, 4);
+      const passwordHash = await hashPassword(
+        password,
+        `${upperCode}:${trimmedName.toLowerCase()}`,
+      );
 
       const missions: PlayerMission[] = pickRandom(
         eventData.missionPool,
@@ -277,7 +314,8 @@ export function EventProvider({ children }: { children: ReactNode }) {
 
       const playerDoc: PlayerDoc = {
         id: playerId,
-        name: playerName,
+        name: trimmedName,
+        passwordHash,
         isGroom,
         joinedAt: Date.now(),
         points: 0,

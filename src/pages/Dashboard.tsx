@@ -54,7 +54,11 @@ export function Dashboard() {
         </div>
         <div className="app-header-right">
           <div className="points-pill">⭐ {currentPlayer.points}</div>
-          <button className="icon-btn" onClick={handleLeave} title="Event verlassen">
+          <button
+            className="icon-btn"
+            onClick={handleLeave}
+            title="Abmelden (mit Name + Passwort wieder anmeldbar)"
+          >
             ⏻
           </button>
         </div>

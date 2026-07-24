@@ -26,6 +26,7 @@ export interface PlayerMission {
 export interface PlayerDoc {
   id: PlayerId;
   name: string;
+  passwordHash: string;
   isGroom: boolean;
   joinedAt: number;
   points: number;

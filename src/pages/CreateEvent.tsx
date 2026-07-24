@@ -17,6 +17,7 @@ export function CreateEvent() {
   const [name, setName] = useState("JGA in Prag");
   const [groomName, setGroomName] = useState("");
   const [hostName, setHostName] = useState("");
+  const [hostPassword, setHostPassword] = useState("");
   const [bingoTasks, setBingoTasks] = useState<string[]>(DEFAULT_BINGO_TASKS);
   const [missionPool, setMissionPool] = useState<string[]>(DEFAULT_MISSION_POOL);
   const [chaosPool, setChaosPool] = useState<string[]>(DEFAULT_CHAOS_POOL);
@@ -32,6 +33,7 @@ export function CreateEvent() {
   const canSubmit =
     groomName.trim() &&
     hostName.trim() &&
+    hostPassword.trim().length >= 4 &&
     name.trim() &&
     bingoValid &&
     missionPool.filter((m) => m.trim()).length >= 3 &&
@@ -46,6 +48,7 @@ export function CreateEvent() {
         name: name.trim(),
         groomName: groomName.trim(),
         hostName: hostName.trim(),
+        hostPassword: hostPassword.trim(),
         bingoTasks: bingoTasks.map((t) => t.trim()),
         missionPool: missionPool.map((m) => m.trim()).filter(Boolean),
         chaosPool: chaosPool.map((c) => c.trim()).filter(Boolean),
@@ -92,6 +95,20 @@ export function CreateEvent() {
           placeholder="z.B. Tom"
         />
       </label>
+      <label className="field">
+        <span>Dein Passwort (mind. 4 Zeichen)</span>
+        <input
+          type="password"
+          value={hostPassword}
+          onChange={(e) => setHostPassword(e.target.value)}
+          placeholder="Merk dir das für später"
+        />
+      </label>
+      <p className="hint">
+        Mit Name + Passwort kannst du dich später wieder anmelden, falls du die
+        App schließt oder ein anderes Handy nutzt – dein Fortschritt bleibt
+        erhalten.
+      </p>
 
       <button
         type="button"
