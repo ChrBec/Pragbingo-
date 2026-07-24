@@ -28,6 +28,7 @@ export interface PlayerDoc {
   name: string;
   passwordHash: string;
   isGroom: boolean;
+  approved: boolean;
   joinedAt: number;
   points: number;
   jokersLeft: number;

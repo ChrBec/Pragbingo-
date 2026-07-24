@@ -18,6 +18,7 @@ import {
   increment,
   getDoc,
   getDocs,
+  deleteDoc,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { auth, db, ensureAnonymousAuth, isFirebaseConfigured, storage } from "../firebase";
@@ -100,6 +101,8 @@ interface EventContextValue {
   uploadFeedPost: (file: File, caption: string) => Promise<void>;
   castVote: (category: string, postId: string) => Promise<void>;
   setHangoverRating: (rating: number) => Promise<void>;
+  approvePlayer: (playerId: string) => Promise<void>;
+  removePlayer: (playerId: string) => Promise<void>;
 }
 
 const EventContext = createContext<EventContextValue | null>(null);
@@ -246,6 +249,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
         name: input.hostName,
         passwordHash,
         isGroom: false,
+        approved: true,
         joinedAt: Date.now(),
         points: 0,
         jokersLeft: JOKER_LIMIT,
@@ -317,6 +321,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
         name: trimmedName,
         passwordHash,
         isGroom,
+        approved: false,
         joinedAt: Date.now(),
         points: 0,
         jokersLeft: JOKER_LIMIT,
@@ -481,8 +486,9 @@ export function EventProvider({ children }: { children: ReactNode }) {
   );
 
   const spinChaos = useCallback(async (): Promise<ChaosEntry | null> => {
-    if (!db || !event || players.length === 0) return null;
-    const target = pickOne(players);
+    const approvedPlayers = players.filter((p) => p.approved);
+    if (!db || !event || approvedPlayers.length === 0) return null;
+    const target = pickOne(approvedPlayers);
     const task = pickOne(event.chaosPool);
     const id = randomId();
     const entry: ChaosEntry = {
@@ -602,6 +608,25 @@ export function EventProvider({ children }: { children: ReactNode }) {
     [event, currentPlayer],
   );
 
+  const approvePlayer = useCallback(
+    async (playerId: string) => {
+      if (!db || !event || currentPlayer?.id !== event.hostPlayerId) return;
+      await updateDoc(doc(db, "events", event.code, "players", playerId), {
+        approved: true,
+      });
+    },
+    [event, currentPlayer],
+  );
+
+  const removePlayer = useCallback(
+    async (playerId: string) => {
+      if (!db || !event || currentPlayer?.id !== event.hostPlayerId) return;
+      if (playerId === event.hostPlayerId) return;
+      await deleteDoc(doc(db, "events", event.code, "players", playerId));
+    },
+    [event, currentPlayer],
+  );
+
   const value: EventContextValue = {
     ready,
     configured: isFirebaseConfigured,
@@ -629,6 +654,8 @@ export function EventProvider({ children }: { children: ReactNode }) {
     uploadFeedPost,
     castVote,
     setHangoverRating,
+    approvePlayer,
+    removePlayer,
   };
 
   return <EventContext.Provider value={value}>{children}</EventContext.Provider>;

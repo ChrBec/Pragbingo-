@@ -42,6 +42,28 @@ export function Dashboard() {
     navigate("/");
   };
 
+  if (!currentPlayer.approved) {
+    return (
+      <div className="screen center-screen">
+        <div className="brand">
+          <div className="brand-emoji">⏳</div>
+          <h1>Warte auf Bestätigung</h1>
+          <p className="tagline">
+            {event.name} · Code <strong>{event.code}</strong>
+          </p>
+        </div>
+        <p className="muted">
+          Der Gastgeber / die Gastgeberin muss deinen Beitritt noch bestätigen.
+          Diese Seite aktualisiert sich automatisch, sobald das passiert ist –
+          du musst nichts tun.
+        </p>
+        <button className="ghost-btn" onClick={handleLeave}>
+          Abbrechen
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">

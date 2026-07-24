@@ -5,7 +5,8 @@ export function ReportTab() {
   const { event, players, feed, ballots, log } = useEvent();
 
   const stats = useMemo(() => {
-    const ranked = [...players].sort((a, b) => b.points - a.points);
+    const approvedPlayers = players.filter((p) => p.approved);
+    const ranked = [...approvedPlayers].sort((a, b) => b.points - a.points);
 
     const votingWinners = (event?.votingCategories ?? []).map((category) => {
       const tally = new Map<string, number>();
@@ -25,11 +26,11 @@ export function ReportTab() {
       return { category, post, votes: bestCount };
     });
 
-    const bingoChampions = players.filter((p) =>
+    const bingoChampions = approvedPlayers.filter((p) =>
       p.bingoBonusAwarded.includes("full"),
     );
 
-    const missionCounts = players
+    const missionCounts = approvedPlayers
       .map((p) => ({
         player: p,
         done: p.missions.filter((m) => m.status === "done").length,

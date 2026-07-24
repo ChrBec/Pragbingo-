@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { useEvent } from "../state/EventContext";
 
 const TABS = [
   { to: "/app/missions", label: "Missionen", icon: "🕵️" },
@@ -12,15 +13,34 @@ const TABS = [
 ];
 
 export function NavBar() {
+  const { event, currentPlayer, players } = useEvent();
+  const isHost = Boolean(event && currentPlayer && currentPlayer.id === event.hostPlayerId);
+  const pendingCount = players.filter((p) => !p.approved).length;
+
+  const tabs = isHost
+    ? [
+        ...TABS,
+        {
+          to: "/app/manage",
+          label: "Verwalten",
+          icon: "⚙️",
+          badge: pendingCount > 0 ? pendingCount : undefined,
+        },
+      ]
+    : TABS;
+
   return (
     <nav className="nav-bar">
-      {TABS.map((tab) => (
+      {tabs.map((tab) => (
         <NavLink
           key={tab.to}
           to={tab.to}
           className={({ isActive }) => "nav-tab" + (isActive ? " active" : "")}
         >
-          <span className="nav-icon">{tab.icon}</span>
+          <span className="nav-icon">
+            {tab.icon}
+            {"badge" in tab && tab.badge ? <span className="nav-badge">{tab.badge}</span> : null}
+          </span>
           <span className="nav-label">{tab.label}</span>
         </NavLink>
       ))}

@@ -12,6 +12,7 @@ import { ChaosTab } from "./components/tabs/ChaosTab";
 import { VotingTab } from "./components/tabs/VotingTab";
 import { ReportTab } from "./components/tabs/ReportTab";
 import { HangoverTab } from "./components/tabs/HangoverTab";
+import { ManageTab } from "./components/tabs/ManageTab";
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
             <Route path="voting" element={<VotingTab />} />
             <Route path="report" element={<ReportTab />} />
             <Route path="hangover" element={<HangoverTab />} />
+            <Route path="manage" element={<ManageTab />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

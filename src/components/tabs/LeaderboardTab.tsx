@@ -11,7 +11,8 @@ export function LeaderboardTab() {
 
   if (!event) return null;
 
-  const ranked = [...players].sort((a, b) => b.points - a.points);
+  const approvedPlayers = players.filter((p) => p.approved);
+  const ranked = [...approvedPlayers].sort((a, b) => b.points - a.points);
 
   return (
     <div className="tab-screen">
@@ -38,7 +39,7 @@ export function LeaderboardTab() {
         <h3>Bonus &amp; Strafpunkte vergeben</h3>
         <select value={pointsTarget} onChange={(e) => setPointsTarget(e.target.value)}>
           <option value="">Person wählen…</option>
-          {players.map((p) => (
+          {approvedPlayers.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
             </option>
@@ -71,7 +72,7 @@ export function LeaderboardTab() {
         <p className="muted small">Fließt in den Abschlussbericht ein (z.B. „häufigster Zuspätkommer“).</p>
         <select value={tagTarget} onChange={(e) => setTagTarget(e.target.value)}>
           <option value="">Person wählen…</option>
-          {players.map((p) => (
+          {approvedPlayers.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
             </option>
