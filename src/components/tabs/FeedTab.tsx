@@ -10,11 +10,15 @@ function timeAgo(ts: number): string {
 }
 
 export function FeedTab() {
-  const { feed, uploadFeedPost } = useEvent();
+  const { event, feed, uploadFeedPost } = useEvent();
   const [showUpload, setShowUpload] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [caption, setCaption] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const submit = async () => {
@@ -30,6 +34,21 @@ export function FeedTab() {
     }
   };
 
+  const handleExportPdf = async () => {
+    if (!event || feed.length === 0 || exporting) return;
+    setExporting(true);
+    setExportProgress({ done: 0, total: feed.length });
+    try {
+      const { exportFeedToPdf } = await import("../../lib/pdf");
+      await exportFeedToPdf(event, feed, (done, total) => setExportProgress({ done, total }));
+    } catch {
+      alert("PDF-Export ist fehlgeschlagen. Bitte nochmal versuchen.");
+    } finally {
+      setExporting(false);
+      setExportProgress(null);
+    }
+  };
+
   return (
     <div className="tab-screen">
       <div className="tab-header-row">
@@ -39,6 +58,16 @@ export function FeedTab() {
         </button>
       </div>
       <p className="muted">Alle Erinnerungen des Abends an einem Ort.</p>
+
+      <button
+        className="secondary-btn small feed-export-btn"
+        disabled={feed.length === 0 || exporting}
+        onClick={handleExportPdf}
+      >
+        {exporting
+          ? `Erstelle PDF… (${exportProgress?.done ?? 0}/${exportProgress?.total ?? feed.length})`
+          : "📄 Feed als PDF exportieren"}
+      </button>
 
       <div className="feed-list">
         {feed.length === 0 && <p className="muted">Noch keine Beiträge – sei die/der Erste!</p>}
@@ -71,7 +100,6 @@ export function FeedTab() {
               ref={fileInputRef}
               type="file"
               accept="image/*,video/*"
-              capture="environment"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />
             <input

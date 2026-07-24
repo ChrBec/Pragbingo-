@@ -500,6 +500,11 @@ button:disabled {
   border-color: transparent;
 }
 
+.feed-export-btn {
+  display: inline-block;
+  margin: 12px 0 4px;
+}
+
 .feed-list {
   display: flex;
   flex-direction: column;

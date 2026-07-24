@@ -76,7 +76,6 @@ export function MissionsTab() {
               ref={fileInputRef}
               type="file"
               accept="image/*,video/*"
-              capture="environment"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />
             <input
