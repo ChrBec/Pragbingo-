@@ -1,5 +1,6 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useEvent } from "../../state/EventContext";
+import { MediaCaptureInput } from "../MediaCaptureInput";
 import type { PlayerMission } from "../../types";
 
 export function MissionsTab() {
@@ -8,7 +9,6 @@ export function MissionsTab() {
   const [caption, setCaption] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!currentPlayer) return null;
 
@@ -72,12 +72,7 @@ export function MissionsTab() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Beweis hochladen</h3>
             <p className="muted">{activeMission.text}</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,video/*"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
+            <MediaCaptureInput file={file} onChange={setFile} />
             <input
               className="caption-input"
               placeholder="Kurzer Kommentar (optional)"

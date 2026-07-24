@@ -77,6 +77,44 @@ service firebase.storage {
 Das reicht für einen privaten JGA-Abend im Freundeskreis (jede:r mit
 Event-Code kann mitspielen, aber niemand von außen ohne Code).
 
+### CORS für Storage aktivieren (nötig für den PDF-Export)
+
+Fotos anzuzeigen (`<img>`) funktioniert ohne weiteres Setup. Der
+**„Feed als PDF exportieren“**-Button lädt die Fotos aber per `fetch()`
+herunter, um sie in die PDF einzubetten – das verlangt laut
+[Firebase-Doku](https://firebase.google.com/docs/storage/web/download-files#cors_configuration)
+eine explizite CORS-Freigabe auf dem Storage-Bucket, sonst kommt die
+Meldung „Foto konnte nicht geladen werden“.
+
+Einmalig einrichten (im Browser, keine Installation nötig):
+
+1. [console.cloud.google.com](https://console.cloud.google.com/) öffnen,
+   oben das Projekt **pragbingo** auswählen.
+2. Rechts oben das **Cloud Shell**-Symbol (`>_`) anklicken – startet ein
+   Terminal direkt im Browser.
+3. Dort einfügen und ausführen (Origin ggf. anpassen, falls du das Repo
+   umbenennst):
+
+   ```bash
+   cat > cors.json << 'EOF'
+   [
+     {
+       "origin": ["https://chrbec.github.io", "http://localhost:5173"],
+       "method": ["GET"],
+       "maxAgeSeconds": 3600,
+       "responseHeader": ["Content-Type"]
+     }
+   ]
+   EOF
+   gsutil cors set cors.json gs://pragbingo.firebasestorage.app
+   ```
+
+4. Zur Kontrolle: `gsutil cors get gs://pragbingo.firebasestorage.app`
+   sollte die eben gesetzte Konfiguration zurückgeben.
+
+Danach funktioniert der PDF-Export sofort, ohne dass die App neu deployt
+werden muss.
+
 ---
 
 ## 2. Lokal entwickeln

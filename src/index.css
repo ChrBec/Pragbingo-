@@ -455,6 +455,18 @@ button:disabled {
   flex-direction: column;
   gap: 12px;
 }
+.media-capture-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.media-capture-buttons .ghost-btn {
+  width: 100%;
+}
+.media-capture-selected {
+  margin-top: 6px;
+}
+
 .modal-actions {
   display: flex;
   gap: 10px;

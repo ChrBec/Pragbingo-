@@ -1,5 +1,6 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useEvent } from "../../state/EventContext";
+import { MediaCaptureInput } from "../MediaCaptureInput";
 
 function timeAgo(ts: number): string {
   const diffMin = Math.max(0, Math.round((Date.now() - ts) / 60000));
@@ -19,7 +20,6 @@ export function FeedTab() {
   const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(
     null,
   );
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const submit = async () => {
     if (!file) return;
@@ -96,12 +96,7 @@ export function FeedTab() {
         <div className="modal-overlay" onClick={() => setShowUpload(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Moment teilen</h3>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,video/*"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
+            <MediaCaptureInput file={file} onChange={setFile} />
             <input
               className="caption-input"
               placeholder="Kurzer Kommentar (optional)"
