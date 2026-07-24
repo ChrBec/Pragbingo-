@@ -83,12 +83,21 @@ Event-Code kann mitspielen, aber niemand von außen ohne Code).
 
 ```bash
 npm install
-cp .env.example .env
-# .env mit den 6 Firebase-Werten aus Schritt 1 befüllen
 npm run dev
 ```
 
-Öffne die angezeigte URL auf dem Handy (im selben WLAN) oder im Browser.
+Die Firebase-Konfiguration liegt bereits in `.env` im Repo (siehe Hinweis
+unten, warum das hier unbedenklich ist). Öffne die angezeigte URL auf dem
+Handy (im selben WLAN) oder im Browser.
+
+> **Warum eine `.env` mit echten Werten im Repo liegt:** Der Firebase
+> „apiKey“ ist – anders als der Name suggeriert – kein Geheimnis. Er landet
+> bei jedem Firebase-Webprojekt sowieso sichtbar im ausgelieferten
+> JavaScript-Bundle, das jede:r Website-Besucher:in im Browser einsehen kann.
+> Die eigentliche Zugriffskontrolle passiert über die Firestore-/Storage-
+> Regeln oben (nur `request.auth != null`, also nur anonym eingeloggte
+> Teilnehmer:innen mit Event-Code). Ihn im Repo zu committen ist deshalb
+> Standard-Vorgehen für Firebase-Webapps, keine Sicherheitslücke.
 
 ---
 
@@ -96,26 +105,25 @@ npm run dev
 
 Das Repo enthält bereits einen GitHub-Actions-Workflow
 (`.github/workflows/deploy.yml`), der bei jedem Push auf `main` automatisch
-baut und auf GitHub Pages veröffentlicht.
+baut (inkl. der committeten `.env`) und auf GitHub Pages veröffentlicht.
 
-1. **Secrets hinterlegen**: Repo → **Settings → Secrets and variables →
-   Actions → New repository secret**, für jeden der 6 Firebase-Werte einen
-   Secret mit exakt diesem Namen anlegen:
-   - `VITE_FIREBASE_API_KEY`
-   - `VITE_FIREBASE_AUTH_DOMAIN`
-   - `VITE_FIREBASE_PROJECT_ID`
-   - `VITE_FIREBASE_STORAGE_BUCKET`
-   - `VITE_FIREBASE_MESSAGING_SENDER_ID`
-   - `VITE_FIREBASE_APP_ID`
-2. **Pages aktivieren**: Repo → **Settings → Pages** → bei „Build and
+1. **Pages aktivieren**: Repo → **Settings → Pages** → bei „Build and
    deployment“ als **Source** „**GitHub Actions**“ auswählen.
-3. Diesen Branch nach `main` mergen (oder direkt auf `main` pushen) – der
+2. Diesen Branch nach `main` mergen (oder direkt auf `main` pushen) – der
    Workflow baut die App automatisch und veröffentlicht sie unter:
 
    `https://<dein-github-name>.github.io/Pragbingo-/`
 
    (Der Pfad `/Pragbingo-/` ist in `vite.config.ts` als `base` hinterlegt und
    muss zum Repo-Namen passen – falls du das Repo umbenennst, dort anpassen.)
+
+> **Wichtig bei privatem Repo:** GitHub Pages lässt sich auf einem
+> kostenlosen GitHub-Account nur aus **öffentlichen** Repos veröffentlichen
+> (private Repos + Pages brauchen GitHub Pro/Team). Da der Firebase-Key wie
+> oben beschrieben ohnehin nicht geheim ist, kannst du das Repo vor dem
+> Deployment gefahrlos wieder auf „Public“ stellen – dadurch wird nichts
+> preisgegeben, was nicht sowieso im ausgelieferten Bundle stünde. Der
+> eigentliche Schutz eures Spielstands sind die Firestore-/Storage-Regeln.
 
 Den Link könnt ihr direkt in die WhatsApp-Gruppe für den JGA teilen.
 
