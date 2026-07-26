@@ -5,6 +5,7 @@ export interface EventDoc {
   name: string;
   groomName: string;
   hostPlayerId: PlayerId;
+  hostAuthUid: string;
   createdAt: number;
   bingoTasks: string[]; // exactly 25
   missionPool: string[];
@@ -27,6 +28,7 @@ export interface PlayerDoc {
   id: PlayerId;
   name: string;
   passwordHash: string;
+  authUid: string;
   isGroom: boolean;
   approved: boolean;
   joinedAt: number;

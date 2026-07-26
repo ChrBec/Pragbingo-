@@ -47,19 +47,104 @@ sind beim Erstellen eines Events direkt in der App frei editierbar.
 ### Firestore- & Storage-Regeln
 
 Die App ist bewusst ohne Login-Formular gebaut (jede:r tritt nur mit Namen +
-Event-Code bei), daher regeln die Firestore/Storage-Regeln den Zugriff nur
-über die anonyme Authentifizierung. Trage in **Firestore → Regeln** ein:
+Event-Code bei). Damit **wirklich niemand ohne Bestätigung durch die
+Gastgeber:in die Event-Daten sehen kann** (Fotos, Namen, Punktestände –
+DSGVO-relevant), reicht "eingeloggt" allein nicht als Regel: Erst nach
+Bestätigung landet die eigene anonyme Nutzer-ID in einer
+`approvedUids`-Liste, und **nur** wer dort drinsteht, darf den Feed, die
+Teilnehmer:innen-Liste, den Chaos-Verlauf usw. lesen. Wer wartet, bekommt
+serverseitig (nicht nur in der Oberfläche!) ausschließlich Zugriff auf den
+eigenen Warte-Status – der Rest ist für unbestätigte Anfragen technisch
+unerreichbar, egal wie sie zugreifen.
+
+Trage in **Firestore → Regeln** ein:
 
 ```
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /events/{eventCode}/{document=**} {
-      allow read, write: if request.auth != null;
+    match /events/{eventCode} {
+
+      function isApproved() {
+        return request.auth != null &&
+          exists(/databases/$(database)/documents/events/$(eventCode)/approvedUids/$(request.auth.uid));
+      }
+      function isHost() {
+        return request.auth != null &&
+          get(/databases/$(database)/documents/events/$(eventCode)).data.hostAuthUid == request.auth.uid;
+      }
+
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow create: if request.auth != null;
+      allow update, delete: if false;
+
+      match /players/{playerId} {
+        allow get: if request.auth != null;
+        allow list: if isApproved();
+        allow create: if request.auth != null &&
+          request.resource.data.authUid == request.auth.uid &&
+          (
+            request.resource.data.approved == false ||
+            (isHost() && request.resource.data.approved == true)
+          );
+        allow update: if isHost() ||
+          (
+            isApproved() &&
+            request.resource.data.approved == resource.data.approved &&
+            request.resource.data.passwordHash == resource.data.passwordHash &&
+            request.resource.data.authUid == resource.data.authUid
+          );
+        allow delete: if isHost();
+      }
+
+      match /approvedUids/{uidDoc} {
+        allow get: if request.auth != null && request.auth.uid == uidDoc;
+        allow list: if false;
+        allow create: if isHost() ||
+          (
+            request.auth.uid == uidDoc &&
+            request.resource.data.viaPlayerId is string &&
+            get(/databases/$(database)/documents/events/$(eventCode)/players/$(request.resource.data.viaPlayerId)).data.approved == true &&
+            get(/databases/$(database)/documents/events/$(eventCode)/players/$(request.resource.data.viaPlayerId)).data.passwordHash == request.resource.data.provenHash
+          );
+        allow update: if false;
+        allow delete: if isHost();
+      }
+
+      match /feed/{postId} {
+        allow read, write: if isApproved();
+      }
+      match /chaos/{chaosId} {
+        allow read, write: if isApproved();
+      }
+      match /log/{logId} {
+        allow read, write: if isApproved();
+      }
+      match /ballots/{ballotId} {
+        allow read, write: if isApproved();
+      }
     }
   }
 }
 ```
+
+Kurz erklärt, was die Regeln tun:
+- **`events/{eventCode}`**: Der Event-Name selbst ist per Code lesbar (nötig
+  für die Warte-Seite und den Beitritts-Check), aber niemand kann alle
+  Events auflisten oder das Dokument nachträglich verändern.
+- **`players`**: Ein einzelnes Profil per exakter ID lesen (nötig für
+  Login/Beitritt) geht immer – aber die komplette Teilnehmer:innen-**Liste**
+  gibt es nur für bereits bestätigte Mitglieder. Neue Profile starten
+  zwingend mit `approved: false`, das lässt sich nicht durch einen
+  manipulierten Schreibzugriff umgehen (die Regel erzwingt es serverseitig).
+- **`approvedUids`**: Die eigentliche Freischaltung. Der Gastgeber schreibt
+  hier bei Bestätigung die passende Nutzer-ID hinein; ein zurückkehrendes
+  Gerät (gleicher Name + Passwort, aber neue anonyme Sitzung) darf sich
+  selbst freischalten – aber nur, wenn es das korrekte Passwort-Hash für ein
+  bereits bestätigtes Profil vorweisen kann.
+- **`feed` / `chaos` / `log` / `ballots`**: Komplett gesperrt, solange man
+  nicht in `approvedUids` steht.
 
 Und in **Storage → Regeln**:
 

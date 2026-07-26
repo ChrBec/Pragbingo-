@@ -32,3 +32,14 @@ export function pickRandom<T>(arr: T[], count: number): T[] {
 export function pickOne<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
 }
+
+export function normalizePlayerId(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "spieler";
+}

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -17,12 +18,11 @@ import {
   updateDoc,
   increment,
   getDoc,
-  getDocs,
   deleteDoc,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { auth, db, ensureAnonymousAuth, isFirebaseConfigured, storage } from "../firebase";
-import { randomId, shuffledIndices } from "../lib/ids";
+import { randomId, shuffledIndices, normalizePlayerId } from "../lib/ids";
 import { newlyCompletedLines } from "../lib/bingoLines";
 import { hashPassword } from "../lib/hash";
 import {
@@ -148,57 +148,89 @@ export function EventProvider({ children }: { children: ReactNode }) {
     ensureAnonymousAuth().finally(() => setReady(true));
   }, []);
 
-  const subscribeToEvent = useCallback((code: string) => {
+  // Collection-level ("list") listeners require the requester to already be
+  // an approved participant (see Firestore rules). We only attach them once
+  // our own player doc confirms approval, so a pending join never receives
+  // the feed, the other players, or anything else about the event.
+  const subscribeToEvent = useCallback((code: string, myPlayerId: string) => {
     if (!db) return () => {};
     setLoading(true);
-    const unsubs: Array<() => void> = [];
 
-    unsubs.push(
-      onSnapshot(doc(db, "events", code), (snap) => {
-        setEvent(snap.exists() ? (snap.data() as EventDoc) : null);
-        setLoading(false);
-      }),
-    );
-    unsubs.push(
-      onSnapshot(collection(db, "events", code, "players"), (snap) => {
-        setPlayers(snap.docs.map((d) => d.data() as PlayerDoc));
-      }),
-    );
-    unsubs.push(
-      onSnapshot(
-        query(collection(db, "events", code, "feed"), orderBy("createdAt", "desc")),
-        (snap) => setFeed(snap.docs.map((d) => d.data() as FeedPost)),
-      ),
-    );
-    unsubs.push(
-      onSnapshot(
-        query(collection(db, "events", code, "chaos"), orderBy("createdAt", "desc")),
-        (snap) => setChaos(snap.docs.map((d) => d.data() as ChaosEntry)),
-      ),
-    );
-    unsubs.push(
-      onSnapshot(
-        query(collection(db, "events", code, "log"), orderBy("createdAt", "desc")),
-        (snap) => setLog(snap.docs.map((d) => d.data() as LogEntry)),
-      ),
-    );
-    unsubs.push(
-      onSnapshot(collection(db, "events", code, "ballots"), (snap) => {
-        setBallots(snap.docs.map((d) => d.data() as Ballot));
-      }),
-    );
+    let listUnsubs: Array<() => void> = [];
+    let listsStarted = false;
 
-    return () => unsubs.forEach((u) => u());
+    const startLists = () => {
+      if (listsStarted || !db) return;
+      listsStarted = true;
+      listUnsubs.push(
+        onSnapshot(collection(db, "events", code, "players"), (snap) => {
+          setPlayers(snap.docs.map((d) => d.data() as PlayerDoc));
+        }),
+      );
+      listUnsubs.push(
+        onSnapshot(
+          query(collection(db, "events", code, "feed"), orderBy("createdAt", "desc")),
+          (snap) => setFeed(snap.docs.map((d) => d.data() as FeedPost)),
+        ),
+      );
+      listUnsubs.push(
+        onSnapshot(
+          query(collection(db, "events", code, "chaos"), orderBy("createdAt", "desc")),
+          (snap) => setChaos(snap.docs.map((d) => d.data() as ChaosEntry)),
+        ),
+      );
+      listUnsubs.push(
+        onSnapshot(
+          query(collection(db, "events", code, "log"), orderBy("createdAt", "desc")),
+          (snap) => setLog(snap.docs.map((d) => d.data() as LogEntry)),
+        ),
+      );
+      listUnsubs.push(
+        onSnapshot(collection(db, "events", code, "ballots"), (snap) => {
+          setBallots(snap.docs.map((d) => d.data() as Ballot));
+        }),
+      );
+    };
+
+    const unsubEvent = onSnapshot(doc(db, "events", code), (snap) => {
+      setEvent(snap.exists() ? (snap.data() as EventDoc) : null);
+      setLoading(false);
+    });
+
+    const unsubMe = onSnapshot(doc(db, "events", code, "players", myPlayerId), (snap) => {
+      const me = snap.exists() ? (snap.data() as PlayerDoc) : null;
+      setPlayers((prev) => {
+        const others = prev.filter((p) => p.id !== myPlayerId);
+        return me ? [...others, me] : others;
+      });
+      if (me?.approved) startLists();
+    });
+
+    return () => {
+      unsubEvent();
+      unsubMe();
+      listUnsubs.forEach((u) => u());
+    };
   }, []);
+
+  const unsubRef = useRef<() => void>(() => {});
+
+  const startSubscription = useCallback(
+    (code: string, playerId: string) => {
+      unsubRef.current();
+      unsubRef.current = subscribeToEvent(code, playerId);
+    },
+    [subscribeToEvent],
+  );
 
   useEffect(() => {
     if (!ready) return;
     const session = loadSession();
     if (!session) return;
     setCurrentPlayerId(session.playerId);
-    const unsub = subscribeToEvent(session.eventCode);
-    return unsub;
-  }, [ready, subscribeToEvent]);
+    startSubscription(session.eventCode, session.playerId);
+    return () => unsubRef.current();
+  }, [ready, startSubscription]);
 
   const rejoin = useCallback(async (): Promise<boolean> => {
     const session = loadSession();
@@ -209,21 +241,23 @@ export function EventProvider({ children }: { children: ReactNode }) {
     );
     if (!eventSnap.exists() || !playerSnap.exists()) return false;
     setCurrentPlayerId(session.playerId);
-    subscribeToEvent(session.eventCode);
+    startSubscription(session.eventCode, session.playerId);
     return true;
-  }, [subscribeToEvent]);
+  }, [startSubscription]);
 
   const createEvent = useCallback(
     async (input: CreateEventInput): Promise<string> => {
       if (!db) throw new Error("Firebase ist nicht konfiguriert.");
       await ensureAnonymousAuth();
       const code = randomId().slice(0, 5).toUpperCase();
-      const hostPlayerId = uid() + "_" + randomId().slice(0, 4);
+      const hostAuthUid = uid();
+      const hostPlayerId = normalizePlayerId(input.hostName);
       const eventDoc: EventDoc = {
         code,
         name: input.name,
         groomName: input.groomName,
         hostPlayerId,
+        hostAuthUid,
         createdAt: Date.now(),
         bingoTasks: (input.bingoTasks ?? DEFAULT_BINGO_TASKS).slice(0, 25),
         missionPool: input.missionPool ?? DEFAULT_MISSION_POOL,
@@ -248,6 +282,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
         id: hostPlayerId,
         name: input.hostName,
         passwordHash,
+        authUid: hostAuthUid,
         isGroom: false,
         approved: true,
         joinedAt: Date.now(),
@@ -259,17 +294,18 @@ export function EventProvider({ children }: { children: ReactNode }) {
         bingoBonusAwarded: [],
         hangoverRating: null,
       };
-      await setDoc(
-        doc(db, "events", code, "players", hostPlayerId),
-        playerDoc,
-      );
+      await setDoc(doc(db, "events", code, "players", hostPlayerId), playerDoc);
+      await setDoc(doc(db, "events", code, "approvedUids", hostAuthUid), {
+        approved: true,
+        playerId: hostPlayerId,
+      });
 
       saveSession({ eventCode: code, playerId: hostPlayerId });
       setCurrentPlayerId(hostPlayerId);
-      subscribeToEvent(code);
+      startSubscription(code, hostPlayerId);
       return code;
     },
-    [subscribeToEvent],
+    [startSubscription],
   );
 
   const joinEvent = useCallback(
@@ -283,13 +319,12 @@ export function EventProvider({ children }: { children: ReactNode }) {
         throw new Error("Kein Event mit diesem Code gefunden.");
       }
       const eventData = eventSnap.data() as EventDoc;
+      const playerId = normalizePlayerId(trimmedName);
 
-      const playersSnap = await getDocs(collection(db, "events", upperCode, "players"));
-      const existing = playersSnap.docs
-        .map((d) => d.data() as PlayerDoc)
-        .find((p) => p.name.trim().toLowerCase() === trimmedName.toLowerCase());
+      const existingSnap = await getDoc(doc(db, "events", upperCode, "players", playerId));
 
-      if (existing) {
+      if (existingSnap.exists()) {
+        const existing = existingSnap.data() as PlayerDoc;
         const enteredHash = await hashPassword(
           password,
           `${upperCode}:${trimmedName.toLowerCase()}`,
@@ -299,13 +334,22 @@ export function EventProvider({ children }: { children: ReactNode }) {
             `Der Name „${trimmedName}" ist in diesem Event schon vergeben. Falsches Passwort – bitte erneut versuchen oder einen anderen Namen wählen.`,
           );
         }
+        const myUid = uid();
+        if (existing.approved) {
+          // Prove ownership of the password to self-grant this new device
+          // read access, without waiting on the host again.
+          await setDoc(doc(db, "events", upperCode, "approvedUids", myUid), {
+            approved: true,
+            viaPlayerId: playerId,
+            provenHash: enteredHash,
+          });
+        }
         saveSession({ eventCode: upperCode, playerId: existing.id });
         setCurrentPlayerId(existing.id);
-        subscribeToEvent(upperCode);
+        startSubscription(upperCode, existing.id);
         return;
       }
 
-      const playerId = uid() + "_" + randomId().slice(0, 4);
       const passwordHash = await hashPassword(
         password,
         `${upperCode}:${trimmedName.toLowerCase()}`,
@@ -320,6 +364,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
         id: playerId,
         name: trimmedName,
         passwordHash,
+        authUid: uid(),
         isGroom,
         approved: false,
         joinedAt: Date.now(),
@@ -331,18 +376,16 @@ export function EventProvider({ children }: { children: ReactNode }) {
         bingoBonusAwarded: [],
         hangoverRating: null,
       };
-      await setDoc(
-        doc(db, "events", upperCode, "players", playerId),
-        playerDoc,
-      );
+      await setDoc(doc(db, "events", upperCode, "players", playerId), playerDoc);
       saveSession({ eventCode: upperCode, playerId });
       setCurrentPlayerId(playerId);
-      subscribeToEvent(upperCode);
+      startSubscription(upperCode, playerId);
     },
-    [subscribeToEvent],
+    [startSubscription],
   );
 
   const leaveEvent = useCallback(() => {
+    unsubRef.current();
     localStorage.removeItem("pragbingo:session");
     setCurrentPlayerId(null);
     setEvent(null);
@@ -611,20 +654,32 @@ export function EventProvider({ children }: { children: ReactNode }) {
   const approvePlayer = useCallback(
     async (playerId: string) => {
       if (!db || !event || currentPlayer?.id !== event.hostPlayerId) return;
+      const target = players.find((p) => p.id === playerId);
+      if (!target) return;
       await updateDoc(doc(db, "events", event.code, "players", playerId), {
         approved: true,
       });
+      await setDoc(doc(db, "events", event.code, "approvedUids", target.authUid), {
+        approved: true,
+        playerId,
+      });
     },
-    [event, currentPlayer],
+    [event, currentPlayer, players],
   );
 
   const removePlayer = useCallback(
     async (playerId: string) => {
       if (!db || !event || currentPlayer?.id !== event.hostPlayerId) return;
       if (playerId === event.hostPlayerId) return;
+      const target = players.find((p) => p.id === playerId);
       await deleteDoc(doc(db, "events", event.code, "players", playerId));
+      if (target?.authUid) {
+        await deleteDoc(doc(db, "events", event.code, "approvedUids", target.authUid)).catch(
+          () => {},
+        );
+      }
     },
-    [event, currentPlayer],
+    [event, currentPlayer, players],
   );
 
   const value: EventContextValue = {
