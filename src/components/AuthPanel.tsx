@@ -5,8 +5,10 @@ import {
   signInWithEmail,
   signUpWithEmail,
 } from "../firebase";
+import { useAuthState } from "../state/AuthContext";
 
 export function AuthPanel() {
+  const { redirectError } = useAuthState();
   const [mode, setMode] = useState<"choose" | "email-signup" | "email-signin">("choose");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -29,6 +31,7 @@ export function AuthPanel() {
   if (mode === "choose") {
     return (
       <div className="auth-panel">
+        {redirectError && <div className="error-box">{redirectError}</div>}
         <button
           className="secondary-btn"
           disabled={busy}
