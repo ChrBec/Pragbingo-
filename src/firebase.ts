@@ -45,6 +45,31 @@ export function getLastAuthError(): string | null {
   return lastAuthError;
 }
 
+// Firebase's underlying network calls have no built-in client-side timeout:
+// if a request gets silently dropped (blocked script, dead connection, a
+// hung reCAPTCHA challenge for the email/password abuse-protection check)
+// the returned promise can simply never settle, leaving a button stuck on
+// "…" forever with no error to show. Race everything auth-related against
+// our own timeout so a failure is always visible.
+function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+const TIMEOUT_MESSAGE =
+  "Zeitüberschreitung – Firebase hat nicht geantwortet. Prüfe deine Internetverbindung und ob chrbec.github.io in Firebase unter Authentication → Settings → Authorized domains eingetragen ist, dann nochmal versuchen.";
+
 // Always processes any pending Google/Apple redirect result first (see
 // signInWithGoogle/signInWithApple below) before deciding whether to fall
 // back to an anonymous session - otherwise a redirect return could race
@@ -54,7 +79,7 @@ export function ensureAnonymousAuth(): Promise<void> {
   if (authReadyPromise) return authReadyPromise;
   authReadyPromise = (async () => {
     try {
-      await getRedirectResult(auth!);
+      await withTimeout(getRedirectResult(auth!), 10000, TIMEOUT_MESSAGE);
     } catch (e) {
       lastAuthError = describeAuthError(e);
     }
@@ -109,9 +134,17 @@ function describeAuthError(e: unknown): string {
 
 export async function signUpWithEmail(email: string, password: string, displayName: string) {
   try {
-    const cred = await createUserWithEmailAndPassword(requireAuth(), email, password);
+    const cred = await withTimeout(
+      createUserWithEmailAndPassword(requireAuth(), email, password),
+      15000,
+      TIMEOUT_MESSAGE,
+    );
     if (displayName.trim()) {
-      await updateProfile(cred.user, { displayName: displayName.trim() });
+      await withTimeout(
+        updateProfile(cred.user, { displayName: displayName.trim() }),
+        15000,
+        TIMEOUT_MESSAGE,
+      );
     }
   } catch (e) {
     throw new Error(describeAuthError(e));
@@ -120,7 +153,11 @@ export async function signUpWithEmail(email: string, password: string, displayNa
 
 export async function signInWithEmail(email: string, password: string) {
   try {
-    await signInWithEmailAndPassword(requireAuth(), email, password);
+    await withTimeout(
+      signInWithEmailAndPassword(requireAuth(), email, password),
+      15000,
+      TIMEOUT_MESSAGE,
+    );
   } catch (e) {
     throw new Error(describeAuthError(e));
   }
