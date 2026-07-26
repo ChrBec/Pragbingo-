@@ -75,6 +75,18 @@ function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string)
 const TIMEOUT_MESSAGE =
   "Zeitüberschreitung – Firebase hat nicht geantwortet. Prüfe deine Internetverbindung und ob chrbec.github.io in Firebase unter Authentication → Settings → Authorized domains eingetragen ist, dann nochmal versuchen.";
 
+// signInWithGoogle/signInWithApple set this in sessionStorage right before
+// navigating away, so that on return we can tell "a redirect sign-in was in
+// flight" apart from "nobody ever tried". sessionStorage survives the
+// round-trip (it's tied to the tab, not affected by third-party storage
+// blocking) even when Firebase's own redirect-result bookkeeping - which
+// does rely on storage shared with the authDomain (…firebaseapp.com), a
+// different origin than a GitHub Pages app - gets silently wiped by
+// Safari/Chrome tracking protections. That silent loss is the single most
+// common way Google/Apple sign-in "does the consent screen, then dumps you
+// back at the picker with no error" on hosting setups like this one.
+const PENDING_REDIRECT_KEY = "pragbingo_pending_oauth_redirect";
+
 // Always processes any pending Google/Apple redirect result first (see
 // signInWithGoogle/signInWithApple below) before deciding whether to fall
 // back to an anonymous session - otherwise a redirect return could race
@@ -83,10 +95,26 @@ export function ensureAnonymousAuth(): Promise<void> {
   if (!auth) return Promise.resolve();
   if (authReadyPromise) return authReadyPromise;
   authReadyPromise = (async () => {
+    let pendingProvider: string | null = null;
     try {
-      await withTimeout(getRedirectResult(auth!), 10000, TIMEOUT_MESSAGE);
+      pendingProvider = sessionStorage.getItem(PENDING_REDIRECT_KEY);
+    } catch {
+      // sessionStorage can throw in locked-down privacy modes - ignore
+    }
+    try {
+      const result = await withTimeout(getRedirectResult(auth!), 10000, TIMEOUT_MESSAGE);
+      if (pendingProvider && (!result || !result.user || result.user.isAnonymous)) {
+        lastAuthError =
+          "Die Anmeldung wurde nicht abgeschlossen: dein Browser hat die Rückkehr von Google/Apple offenbar blockiert oder die Sitzung dabei verworfen (z. B. Safari 'Cross-Website-Tracking verhindern' oder ein anderer Tracking-Schutz - das betrifft speziell diese Weiterleitung über eine andere Domain). Bitte nochmal versuchen, einen anderen Browser probieren, oder stattdessen mit E-Mail anmelden.";
+      }
     } catch (e) {
       lastAuthError = describeAuthError(e);
+    } finally {
+      try {
+        sessionStorage.removeItem(PENDING_REDIRECT_KEY);
+      } catch {
+        // ignore
+      }
     }
     await new Promise<void>((resolve) => {
       const unsub = onAuthStateChanged(auth!, (user) => {
@@ -110,13 +138,23 @@ function requireAuth() {
 // Mobile browsers routinely block or silently kill popup-based OAuth
 // (third-party cookie restrictions, popup blockers, in-app browsers) - a
 // full-page redirect is the flow Firebase itself recommends for mobile web.
+function markPendingRedirect(provider: string) {
+  try {
+    sessionStorage.setItem(PENDING_REDIRECT_KEY, provider);
+  } catch {
+    // ignore - worst case we just lose the extra diagnostic on return
+  }
+}
+
 export async function signInWithGoogle() {
   const provider = new GoogleAuthProvider();
+  markPendingRedirect("google");
   await signInWithRedirect(requireAuth(), provider);
 }
 
 export async function signInWithApple() {
   const provider = new OAuthProvider("apple.com");
+  markPendingRedirect("apple");
   await signInWithRedirect(requireAuth(), provider);
 }
 
