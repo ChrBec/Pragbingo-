@@ -10,8 +10,14 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-capacitor
 *.local
 .env.local
+
+# Capacitor: native project folders are committed (android/, ios/), but not
+# the iOS build folder created locally by `pod install` / Xcode.
+ios/App/Pods
+ios/App/build
 
 # Editor directories and files
 .vscode/*

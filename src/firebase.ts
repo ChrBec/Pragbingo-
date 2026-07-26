@@ -3,17 +3,22 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import {
   getAuth,
+  initializeAuth,
+  indexedDBLocalPersistence,
   signInAnonymously,
   onAuthStateChanged,
   GoogleAuthProvider,
   OAuthProvider,
   signInWithRedirect,
+  signInWithCredential,
   getRedirectResult,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   updateProfile,
   signOut as firebaseSignOut,
 } from "firebase/auth";
+import { Capacitor } from "@capacitor/core";
+import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -41,7 +46,15 @@ export const app = isFirebaseConfigured
 
 export const db = app ? getFirestore(app) : null;
 export const storage = app ? getStorage(app) : null;
-export const auth = app ? getAuth(app) : null;
+// Inside the Capacitor app shell, the default in-memory/localStorage
+// persistence doesn't reliably survive the WebView being torn down between
+// app launches - indexedDBLocalPersistence is what the plugin's own docs
+// recommend to keep people signed in across app restarts on Android/iOS.
+export const auth = app
+  ? Capacitor.isNativePlatform()
+    ? initializeAuth(app, { persistence: indexedDBLocalPersistence })
+    : getAuth(app)
+  : null;
 
 let authReadyPromise: Promise<void> | null = null;
 let lastAuthError: string | null = null;
@@ -146,13 +159,52 @@ function markPendingRedirect(provider: string) {
   }
 }
 
+// Inside the Capacitor app shell (App Store/Play Store builds) there is no
+// browser redirect at all: the native Google/Apple SDK signs the user in
+// directly and hands back an ID token, which we then exchange for a
+// Firebase credential. This sidesteps the whole cross-origin
+// storage/cookie problem the web redirect flow has, since nothing ever
+// navigates away from the app. auth.currentUser/onAuthStateChanged behave
+// identically afterwards - the rest of the app never needs to know which
+// path was used.
 export async function signInWithGoogle() {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const result = await FirebaseAuthentication.signInWithGoogle();
+      const idToken = result.credential?.idToken;
+      if (!idToken) throw new Error("Google-Anmeldung fehlgeschlagen (kein Token erhalten).");
+      const credential = GoogleAuthProvider.credential(idToken, result.credential?.accessToken);
+      await signInWithCredential(requireAuth(), credential);
+    } catch (e) {
+      throw new Error(describeAuthError(e));
+    }
+    return;
+  }
   const provider = new GoogleAuthProvider();
   markPendingRedirect("google");
   await signInWithRedirect(requireAuth(), provider);
 }
 
 export async function signInWithApple() {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      // skipNativeAuth: the plugin's own docs call this out as required for
+      // Apple specifically - without it the native layer and the Firebase
+      // JS SDK end up signed in as two different sessions.
+      const result = await FirebaseAuthentication.signInWithApple({ skipNativeAuth: true });
+      const idToken = result.credential?.idToken;
+      if (!idToken) throw new Error("Apple-Anmeldung fehlgeschlagen (kein Token erhalten).");
+      const provider = new OAuthProvider("apple.com");
+      const credential = provider.credential({
+        idToken,
+        rawNonce: result.credential?.nonce,
+      });
+      await signInWithCredential(requireAuth(), credential);
+    } catch (e) {
+      throw new Error(describeAuthError(e));
+    }
+    return;
+  }
   const provider = new OAuthProvider("apple.com");
   markPendingRedirect("apple");
   await signInWithRedirect(requireAuth(), provider);
@@ -208,6 +260,12 @@ export async function signInWithEmail(email: string, password: string) {
 
 export async function signOut() {
   if (!auth) return;
+  if (Capacitor.isNativePlatform()) {
+    // Also clears the native Google/Apple SDK's cached account, otherwise
+    // the next "Mit Google anmelden" silently reuses it without an account
+    // picker instead of actually letting the person choose/re-authenticate.
+    await FirebaseAuthentication.signOut().catch(() => {});
+  }
   await firebaseSignOut(auth);
   authReadyPromise = null;
   await ensureAnonymousAuth();

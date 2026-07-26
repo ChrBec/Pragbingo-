@@ -351,6 +351,101 @@ Den Link könnt ihr direkt in die WhatsApp-Gruppe für den JGA teilen.
 
 ---
 
+## 4. Als native App im App Store / Play Store anbieten
+
+Die Google/Apple-Weiterleitung im Browser hängt vom Cross-Domain-Cookie-
+Zugriff zwischen GitHub Pages und der Firebase-`authDomain` ab – Safari
+(„Cross-Website-Tracking verhindern“) und zunehmend auch Chrome blockieren
+das. In einer echten Store-App gibt es dieses Problem nicht mehr, weil dort
+die **nativen** Google-/Apple-SDKs direkt anmelden, ganz ohne Browser-
+Redirect. Der Code ist bereits so gebaut, dass er automatisch erkennt, ob er
+in einer nativen App oder im Browser läuft ([`src/firebase.ts`](src/firebase.ts),
+`Capacitor.isNativePlatform()`), und den jeweils passenden Weg nimmt.
+
+Die App wird dafür mit [Capacitor](https://capacitorjs.com/) in native
+iOS-/Android-Projekte gewrappt – der komplette React-Code bleibt dabei
+identisch, es kommt nur eine native Hülle drumherum. Die Projekte liegen
+bereits unter `android/` und `ios/` in diesem Repo.
+
+**Was ich hier in der Sandbox nicht kann**: Xcode/CocoaPods gibt es nur auf
+macOS – ich kann also keine iOS-App bauen, signieren oder einreichen. Auch
+den finalen Android-Build (`./gradlew`) kann ich hier nicht ausführen, da
+kein Android SDK installiert ist. Alles, was reiner Code/Konfiguration ist,
+habe ich vorbereitet; die folgenden Schritte mit Konten, Zertifikaten und
+den IDEs musst du selbst machen.
+
+### 2.1 Vorbereitung, die für beide Plattformen gilt
+
+1. **Android Studio** (für Android) bzw. ein **Mac mit Xcode 15+** (für iOS)
+   installieren.
+2. In der [Firebase Console](https://console.firebase.google.com/) im
+   selben Projekt zwei weitere Apps registrieren (Projekteinstellungen →
+   „App hinzufügen“):
+   - **Android-App** mit Paketname `com.chrbec.pragbingo` (steht in
+     `capacitor.config.ts` als `appId`) → `google-services.json`
+     herunterladen → nach `android/app/google-services.json` legen. Der
+     Gradle-Build erkennt die Datei automatisch, es ist keine weitere
+     Gradle-Änderung nötig.
+   - **iOS-App** mit Bundle-ID `com.chrbec.pragbingo` → `GoogleService-
+     Info.plist` herunterladen → in Xcode per Drag&Drop in den Ordner
+     `ios/App/App` ziehen (Häkchen bei „Copy items if needed“ und beim
+     Target „App“ setzen).
+3. `npm ci` einmal ausführen (installiert auch die neuen Capacitor-Pakete).
+
+### 2.2 Android / Play Store
+
+1. In der Firebase Console beim gerade angelegten Android-App-Eintrag einen
+   **SHA-1-Fingerabdruck** hinzufügen (Projekteinstellungen → die Android-
+   App → „Fingerabdruck hinzufügen“). Für den Debug-Build bekommst du ihn
+   mit `keytool -list -v -keystore ~/.android/debug.keystore -alias
+   androiddebugkey -storepass android -keypass android` (Passwort meist
+   `android`). Für den späteren Play-Store-Release-Build brauchst du
+   zusätzlich den SHA-1 **und** SHA-256 deines Release-Keystores – ohne das
+   bricht „Mit Google anmelden“ in der signierten Version.
+2. `npm run cap:android` baut die Web-App im Capacitor-Modus, synchronisiert
+   sie ins Android-Projekt und öffnet es in Android Studio.
+3. In Android Studio auf einem Gerät/Emulator ausführen (▶) zum Testen.
+4. Für den Play Store: **Build → Generate Signed Bundle / APK** → Android
+   App Bundle (`.aab`) → eigenen Release-Keystore erzeugen und **sicher
+   aufbewahren** (ohne ihn kannst du die App später nie wieder aktualisieren).
+5. Play Console (einmalig 25 $): [play.google.com/console](https://play.google.com/console)
+   → neue App anlegen → Store-Eintrag ausfüllen (Screenshots, Beschreibung,
+   **Datenschutzerklärung-URL ist Pflicht** – die App speichert Namen,
+   Fotos und Punktestände) → `.aab` hochladen → zur Prüfung einreichen.
+
+### 2.3 iOS / App Store
+
+Ab hier auf einem Mac weiterarbeiten:
+
+1. `npm run cap:ios` baut die Web-App im Capacitor-Modus, synchronisiert
+   sie ins iOS-Projekt und öffnet `ios/App/App.xcodeproj` in Xcode.
+2. In Xcode: Ziel „App“ auswählen → **Signing & Capabilities** → euer Apple-
+   Team auswählen (braucht das kostenpflichtige **Apple Developer Program**,
+   99 $/Jahr) → **„+ Capability“ → „Sign in with Apple“** hinzufügen (Pflicht
+   von Apple, sobald die App Google-Login anbietet – Store-Richtlinie 4.8,
+   ist im Code schon vorbereitet).
+3. **URL-Schema für Google** eintragen: In `GoogleService-Info.plist` den
+   Wert von `REVERSED_CLIENT_ID` kopieren → Xcode → Ziel „App“ → Tab
+   **Info** → **URL Types** → „+“ → dort als URL Scheme einfügen.
+4. Auf einem Simulator/Gerät testen (▶ in Xcode).
+5. Für den App Store: App Store Connect (im Apple Developer Program
+   enthalten) → neue App anlegen (gleiche Bundle-ID) → in Xcode über
+   **Product → Archive** hochladen (Organizer) → in App Store Connect
+   Store-Eintrag ausfüllen (auch hier ist eine **Datenschutzerklärung-URL
+   Pflicht**) → zur Prüfung einreichen.
+
+### 2.4 App-Icon & Splash Screen
+
+Aktuell nutzt die App noch die Capacitor-Standardicons. Mit einem eigenen
+1024×1024-Logo lässt sich das automatisch für beide Plattformen erzeugen:
+
+```
+npm install -D @capacitor/assets
+npx capacitor-assets generate
+```
+
+---
+
 ## Ablauf am Abend
 
 1. Gastgeber:in öffnet die App → **„Neues Event erstellen“** → meldet sich
