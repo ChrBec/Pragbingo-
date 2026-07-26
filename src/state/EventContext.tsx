@@ -18,7 +18,9 @@ import {
   updateDoc,
   increment,
   getDoc,
+  getDocs,
   deleteDoc,
+  arrayUnion,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { auth, db, ensureAnonymousAuth, isFirebaseConfigured, storage } from "../firebase";
@@ -39,6 +41,9 @@ import { pickOne, pickRandom } from "../lib/ids";
 import { loadSession, saveSession } from "../lib/session";
 import type {
   Ballot,
+  ChallengeBid,
+  ChallengeDoc,
+  ChallengeWinner,
   ChaosEntry,
   EventDoc,
   FeedPost,
@@ -70,6 +75,7 @@ interface EventContextValue {
   chaos: ChaosEntry[];
   log: LogEntry[];
   ballots: Ballot[];
+  challenges: ChallengeDoc[];
   currentPlayerId: string | null;
   currentPlayer: PlayerDoc | null;
   loading: boolean;
@@ -105,6 +111,14 @@ interface EventContextValue {
   setHangoverRating: (rating: number) => Promise<void>;
   approvePlayer: (playerId: string) => Promise<void>;
   removePlayer: (playerId: string) => Promise<void>;
+  addChallenge: (text: string) => Promise<void>;
+  placeBid: (challengeId: string, value: number) => Promise<void>;
+  forceStartChallenge: (challengeId: string) => Promise<void>;
+  removeChallenge: (challengeId: string) => Promise<void>;
+  reportChallengeOutcome: (
+    challengeId: string,
+    outcome: "done" | "failed",
+  ) => Promise<void>;
 }
 
 const EventContext = createContext<EventContextValue | null>(null);
@@ -142,6 +156,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
   const [chaos, setChaos] = useState<ChaosEntry[]>([]);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [ballots, setBallots] = useState<Ballot[]>([]);
+  const [challenges, setChallenges] = useState<ChallengeDoc[]>([]);
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const error: string | null = null;
@@ -191,6 +206,12 @@ export function EventProvider({ children }: { children: ReactNode }) {
         onSnapshot(collection(db, "events", code, "ballots"), (snap) => {
           setBallots(snap.docs.map((d) => d.data() as Ballot));
         }),
+      );
+      listUnsubs.push(
+        onSnapshot(
+          query(collection(db, "events", code, "challenges"), orderBy("createdAt", "desc")),
+          (snap) => setChallenges(snap.docs.map((d) => d.data() as ChallengeDoc)),
+        ),
       );
     };
 
@@ -412,6 +433,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
     setChaos([]);
     setLog([]);
     setBallots([]);
+    setChallenges([]);
   }, []);
 
   const addLog = useCallback(
@@ -700,6 +722,143 @@ export function EventProvider({ children }: { children: ReactNode }) {
     [event, currentPlayer, players],
   );
 
+  const addChallenge = useCallback(
+    async (text: string) => {
+      if (!db || !event || !currentPlayer) return;
+      const id = randomId();
+      const challenge: ChallengeDoc = {
+        id,
+        text: text.trim(),
+        creatorId: currentPlayer.id,
+        creatorName: currentPlayer.name,
+        status: "bidding",
+        createdAt: Date.now(),
+        votedPlayerIds: [],
+        winners: [],
+      };
+      await setDoc(doc(db, "events", event.code, "challenges", id), challenge);
+    },
+    [event, currentPlayer],
+  );
+
+  const resolveChallenge = useCallback(
+    async (challengeId: string, force: boolean) => {
+      if (!db || !event) return;
+      const challengeSnap = await getDoc(doc(db, "events", event.code, "challenges", challengeId));
+      if (!challengeSnap.exists()) return;
+      const challenge = challengeSnap.data() as ChallengeDoc;
+      if (challenge.status !== "bidding") return;
+
+      const approvedCount = players.filter((p) => p.approved).length;
+      if (!force && challenge.votedPlayerIds.length < approvedCount) return;
+
+      const bidsSnap = await getDocs(
+        collection(db, "events", event.code, "challenges", challengeId, "bids"),
+      );
+      const bids = bidsSnap.docs.map((d) => d.data() as ChallengeBid);
+      if (bids.length === 0) return;
+
+      const maxValue = Math.max(...bids.map((b) => b.value));
+      const winners: ChallengeWinner[] = bids
+        .filter((b) => b.value === maxValue)
+        .map((b) => ({
+          playerId: b.playerId,
+          playerName: b.playerName,
+          bid: b.value,
+          outcome: "pending" as const,
+        }));
+
+      await updateDoc(doc(db, "events", event.code, "challenges", challengeId), {
+        status: "assigned",
+        resolvedAt: Date.now(),
+        winners,
+      });
+    },
+    [event, players],
+  );
+
+  const placeBid = useCallback(
+    async (challengeId: string, value: number) => {
+      if (!db || !event || !currentPlayer) return;
+      const clamped = Math.max(0, Math.min(100, Math.round(value)));
+      const bidRef = doc(
+        db,
+        "events",
+        event.code,
+        "challenges",
+        challengeId,
+        "bids",
+        currentPlayer.id,
+      );
+      const existing = await getDoc(bidRef);
+      if (existing.exists()) return;
+      const bid: ChallengeBid = {
+        playerId: currentPlayer.id,
+        playerName: currentPlayer.name,
+        value: clamped,
+        createdAt: Date.now(),
+      };
+      await setDoc(bidRef, bid);
+      await updateDoc(doc(db, "events", event.code, "challenges", challengeId), {
+        votedPlayerIds: arrayUnion(currentPlayer.id),
+      });
+      await resolveChallenge(challengeId, false);
+    },
+    [event, currentPlayer, resolveChallenge],
+  );
+
+  const forceStartChallenge = useCallback(
+    async (challengeId: string) => {
+      if (!event || currentPlayer?.id !== event.hostPlayerId) return;
+      await resolveChallenge(challengeId, true);
+    },
+    [event, currentPlayer, resolveChallenge],
+  );
+
+  const removeChallenge = useCallback(
+    async (challengeId: string) => {
+      if (!db || !event || currentPlayer?.id !== event.hostPlayerId) return;
+      const bidsSnap = await getDocs(
+        collection(db, "events", event.code, "challenges", challengeId, "bids"),
+      );
+      for (const bidDoc of bidsSnap.docs) {
+        await deleteDoc(bidDoc.ref).catch(() => {});
+      }
+      await deleteDoc(doc(db, "events", event.code, "challenges", challengeId));
+    },
+    [event, currentPlayer],
+  );
+
+  const reportChallengeOutcome = useCallback(
+    async (challengeId: string, outcome: "done" | "failed") => {
+      if (!db || !event || !currentPlayer) return;
+      const challenge = challenges.find((c) => c.id === challengeId);
+      if (!challenge) return;
+      const winnerEntry = challenge.winners.find((w) => w.playerId === currentPlayer.id);
+      if (!winnerEntry || winnerEntry.outcome !== "pending") return;
+
+      const updatedWinners = challenge.winners.map((w) =>
+        w.playerId === currentPlayer.id ? { ...w, outcome } : w,
+      );
+      await updateDoc(doc(db, "events", event.code, "challenges", challengeId), {
+        winners: updatedWinners,
+      });
+
+      const delta = outcome === "done" ? winnerEntry.bid : -winnerEntry.bid;
+      await updateDoc(doc(db, "events", event.code, "players", currentPlayer.id), {
+        points: increment(delta),
+      });
+      await addLog(event.code, {
+        type: outcome === "done" ? "challenge_won" : "challenge_lost",
+        playerId: currentPlayer.id,
+        playerName: currentPlayer.name,
+        points: delta,
+        note: challenge.text,
+      });
+    },
+    [event, currentPlayer, challenges, addLog],
+  );
+
   const value: EventContextValue = {
     ready,
     configured: isFirebaseConfigured,
@@ -709,6 +868,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
     chaos,
     log,
     ballots,
+    challenges,
     currentPlayerId,
     currentPlayer,
     loading,
@@ -730,6 +890,11 @@ export function EventProvider({ children }: { children: ReactNode }) {
     setHangoverRating,
     approvePlayer,
     removePlayer,
+    addChallenge,
+    placeBid,
+    forceStartChallenge,
+    removeChallenge,
+    reportChallengeOutcome,
   };
 
   return <EventContext.Provider value={value}>{children}</EventContext.Provider>;

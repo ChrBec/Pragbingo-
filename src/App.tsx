@@ -12,6 +12,7 @@ import { BingoTab } from "./components/tabs/BingoTab";
 import { FeedTab } from "./components/tabs/FeedTab";
 import { LeaderboardTab } from "./components/tabs/LeaderboardTab";
 import { ChaosTab } from "./components/tabs/ChaosTab";
+import { ChallengesTab } from "./components/tabs/ChallengesTab";
 import { VotingTab } from "./components/tabs/VotingTab";
 import { ReportTab } from "./components/tabs/ReportTab";
 import { HangoverTab } from "./components/tabs/HangoverTab";
@@ -36,6 +37,7 @@ function App() {
               <Route path="feed" element={<FeedTab />} />
               <Route path="leaderboard" element={<LeaderboardTab />} />
               <Route path="chaos" element={<ChaosTab />} />
+              <Route path="challenges" element={<ChallengesTab />} />
               <Route path="voting" element={<VotingTab />} />
               <Route path="report" element={<ReportTab />} />
               <Route path="hangover" element={<HangoverTab />} />

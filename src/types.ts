@@ -50,7 +50,9 @@ export type LogType =
   | "bingo_full"
   | "chaos_assigned"
   | "chaos_done"
-  | "moment_tag";
+  | "moment_tag"
+  | "challenge_won"
+  | "challenge_lost";
 
 export interface LogEntry {
   id: string;
@@ -91,6 +93,35 @@ export interface Ballot {
   playerId: PlayerId;
   postId: string;
   category: string;
+}
+
+export type ChallengeStatus = "bidding" | "assigned";
+export type ChallengeOutcome = "pending" | "done" | "failed";
+
+export interface ChallengeWinner {
+  playerId: PlayerId;
+  playerName: string;
+  bid: number; // 0-100
+  outcome: ChallengeOutcome;
+}
+
+export interface ChallengeDoc {
+  id: string;
+  text: string;
+  creatorId: PlayerId;
+  creatorName: string;
+  status: ChallengeStatus;
+  createdAt: number;
+  resolvedAt?: number;
+  votedPlayerIds: PlayerId[];
+  winners: ChallengeWinner[];
+}
+
+export interface ChallengeBid {
+  playerId: PlayerId;
+  playerName: string;
+  value: number; // 0-100
+  createdAt: number;
 }
 
 export interface MembershipDoc {

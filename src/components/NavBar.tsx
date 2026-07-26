@@ -7,6 +7,7 @@ const TABS = [
   { to: "/app/feed", label: "Feed", icon: "📸" },
   { to: "/app/leaderboard", label: "Rang", icon: "🏆" },
   { to: "/app/chaos", label: "Chaos", icon: "🎲" },
+  { to: "/app/challenges", label: "Challenges", icon: "💰" },
   { to: "/app/voting", label: "Voting", icon: "🗳️" },
   { to: "/app/report", label: "Bericht", icon: "📋" },
   { to: "/app/hangover", label: "Kater", icon: "🤕" },

@@ -13,6 +13,9 @@ kostenlos auf **GitHub Pages**.
 - **Geheime Missionen** – jede Person bekommt eigene Aufgaben, die nur sie sieht
 - **JGA-Bingo** – persönliches 5×5-Feld, Reihen/Diagonalen bringen Bonuspunkte
 - **Chaos-Knopf** – lost zufällig eine Person + eine Spontanaufgabe aus
+- **Challenge-Auktion** – jede Person schlägt Challenges vor, alle bieten
+  verdeckt Prozentpunkte, Höchstbietende müssen liefern und gewinnen/verlieren
+  entsprechend Punkte
 - **Bräutigam-Joker** – der Bräutigam darf 3× eine Mission weitergeben
 - **Live-Rangliste** – Punkte aus Missionen, Bingo, Chaos, Bonus & Strafe
 - **Foto-Feed** – gemeinsame Timeline aller Beweisfotos/-videos
@@ -137,6 +140,12 @@ service cloud.firestore {
       match /ballots/{ballotId} {
         allow read, write: if isApproved();
       }
+      match /challenges/{challengeId} {
+        allow read, write: if isApproved();
+        match /bids/{bidPlayerId} {
+          allow read, write: if isApproved();
+        }
+      }
     }
   }
 }
@@ -159,8 +168,17 @@ Kurz erklärt, was die Regeln tun:
   UID über Geräte hinweg – einmal freigeschaltet, bleibt der Zugriff also
   automatisch bestehen, auch auf einem neuen Handy (das ist der Mechanismus
   hinter „Meine Events“).
-- **`feed` / `chaos` / `log` / `ballots`**: Komplett gesperrt, solange man
-  nicht in `approvedUids` steht.
+- **`feed` / `chaos` / `log` / `ballots` / `challenges`**: Komplett gesperrt,
+  solange man nicht in `approvedUids` steht.
+
+> **Hinweis zur „verdeckten“ Abstimmung bei Challenges:** Die Gebote werden
+> in der Oberfläche erst nach Abschluss angezeigt – rein technisch könnte
+> sich aber jede bereits bestätigte Person die `bids`-Unterkollektion direkt
+> über die Firestore-SDK ansehen (dieselbe Vertrauensbasis wie bei den
+> „geheimen“ Missionen, die ebenfalls nur clientseitig verborgen sind). Für
+> eine wirklich serverseitig verdeckte Blind-Auktion bräuchte es eine Cloud
+> Function, die außerhalb des Rahmens dieses reinen Client+Firestore-Setups
+> liegt.
 
 Und in **Storage → Regeln**:
 
@@ -281,7 +299,9 @@ Den Link könnt ihr direkt in die WhatsApp-Gruppe für den JGA teilen.
    Checkbox) → landen zunächst auf einer Warteseite, bis die Gastgeber:in
    sie im **„Verwalten“**-Tab bestätigt.
 4. Über den Abend: Missionen erledigen & Beweis hochladen, Bingo-Felder
-   abhaken, den Chaos-Knopf drücken, Fotos im Feed teilen, abstimmen.
+   abhaken, den Chaos-Knopf drücken, im **Challenges**-Tab Aufgaben
+   vorschlagen und verdeckt Punkte darauf bieten, Fotos im Feed teilen,
+   abstimmen.
 5. Am Ende: **Abschlussbericht**-Tab zeigt automatisch Sieger:innen,
    Foto-Highlights und Kuriositäten-Statistiken.
 6. Am nächsten Morgen: **Kater**-Tab öffnen und anonym bewerten.
