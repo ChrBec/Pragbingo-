@@ -1,7 +1,18 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
+import {
+  getAuth,
+  signInAnonymously,
+  onAuthStateChanged,
+  GoogleAuthProvider,
+  OAuthProvider,
+  signInWithPopup,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
+  signOut as firebaseSignOut,
+} from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -42,4 +53,37 @@ export function ensureAnonymousAuth(): Promise<void> {
     });
   });
   return authReadyPromise;
+}
+
+function requireAuth() {
+  if (!auth) throw new Error("Firebase ist nicht konfiguriert.");
+  return auth;
+}
+
+export async function signInWithGoogle() {
+  const provider = new GoogleAuthProvider();
+  await signInWithPopup(requireAuth(), provider);
+}
+
+export async function signInWithApple() {
+  const provider = new OAuthProvider("apple.com");
+  await signInWithPopup(requireAuth(), provider);
+}
+
+export async function signUpWithEmail(email: string, password: string, displayName: string) {
+  const cred = await createUserWithEmailAndPassword(requireAuth(), email, password);
+  if (displayName.trim()) {
+    await updateProfile(cred.user, { displayName: displayName.trim() });
+  }
+}
+
+export async function signInWithEmail(email: string, password: string) {
+  await signInWithEmailAndPassword(requireAuth(), email, password);
+}
+
+export async function signOut() {
+  if (!auth) return;
+  await firebaseSignOut(auth);
+  authReadyPromise = null;
+  await ensureAnonymousAuth();
 }

@@ -715,6 +715,54 @@ button:disabled {
   color: var(--text-muted);
 }
 
+.auth-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.account-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+.account-badge button {
+  background: none;
+  border: none;
+  color: var(--accent-2);
+  text-decoration: underline;
+  font-size: 0.82rem;
+  padding: 0;
+}
+
+.my-events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+.my-event-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.my-event-card-title {
+  font-weight: 700;
+}
+.my-event-card-meta {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
 .manage-list {
   display: flex;
   flex-direction: column;

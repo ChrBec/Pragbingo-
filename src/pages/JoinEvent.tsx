@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEvent } from "../state/EventContext";
+import { useAuthState } from "../state/AuthContext";
 
 export function JoinEvent() {
   const { joinEvent } = useEvent();
+  const { isAnonymous } = useAuthState();
   const navigate = useNavigate();
   const params = useParams();
 
@@ -39,7 +41,10 @@ export function JoinEvent() {
         ← Zurück
       </Link>
       <h1>Event beitreten</h1>
-      <p className="muted">Gib den Code vom Gastgeber ein und leg los.</p>
+      <p className="muted">
+        Frag die Gastgeber:in nach Event-Code und Event-Passwort und gib
+        deinen Namen ein.
+      </p>
 
       <label className="field">
         <span>Event-Code</span>
@@ -60,20 +65,14 @@ export function JoinEvent() {
         />
       </label>
       <label className="field">
-        <span>Passwort (mind. 4 Zeichen)</span>
+        <span>Event-Passwort</span>
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Neu vergeben oder vorhandenes eingeben"
+          placeholder="Von der Gastgeber:in bekommen"
         />
       </label>
-      <p className="hint">
-        Beim ersten Beitritt legst du mit diesem Namen + Passwort dein Profil
-        an. Schließt du die App oder wechselst das Handy, meldest du dich mit
-        genau demselben Namen + Passwort wieder an – dein Fortschritt bleibt
-        erhalten.
-      </p>
       <label className="checkbox-field">
         <input
           type="checkbox"
@@ -83,6 +82,20 @@ export function JoinEvent() {
         <span>Ich bin der Bräutigam 🤵</span>
       </label>
 
+      {isAnonymous ? (
+        <p className="hint">
+          Du trittst gerade anonym bei. Auf diesem Gerät bleibt dein
+          Fortschritt erhalten, solange du die App nicht zurücksetzt. Möchtest
+          du auch von anderen Geräten aus zurück ins Event, ohne das Passwort
+          erneut einzugeben? <Link to="/login">Vorher anmelden</Link>.
+        </p>
+      ) : (
+        <p className="hint">
+          Du bist angemeldet – dieses Event erscheint danach automatisch unter
+          „Meine Events".
+        </p>
+      )}
+
       {error && <div className="error-box">{error}</div>}
 
       <button
@@ -90,7 +103,7 @@ export function JoinEvent() {
         disabled={!canSubmit || submitting}
         onClick={handleSubmit}
       >
-        {submitting ? "Trete bei…" : "Beitreten / Anmelden 🙌"}
+        {submitting ? "Trete bei…" : "Beitreten 🙌"}
       </button>
     </div>
   );

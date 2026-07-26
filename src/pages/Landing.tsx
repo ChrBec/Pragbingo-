@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useEvent } from "../state/EventContext";
+import { useAuthState } from "../state/AuthContext";
+import { signOut } from "../firebase";
 
 export function Landing() {
   const { rejoin, configured } = useEvent();
+  const { isAnonymous, displayLabel } = useAuthState();
   const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
   const [hasSession, setHasSession] = useState(false);
@@ -43,6 +46,20 @@ export function Landing() {
         <Link className="secondary-btn" to="/join">
           🙋 Event beitreten
         </Link>
+        <Link className="ghost-btn" to="/my-events">
+          📋 Meine Events
+        </Link>
+      </div>
+
+      <div className="account-badge">
+        {isAnonymous ? (
+          <Link to="/login">Anmelden</Link>
+        ) : (
+          <>
+            <span>Angemeldet als {displayLabel}</span>
+            <button onClick={() => signOut()}>Abmelden</button>
+          </>
+        )}
       </div>
     </div>
   );

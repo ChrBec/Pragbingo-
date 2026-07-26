@@ -44,6 +44,7 @@ import type {
   FeedPost,
   LogEntry,
   LogType,
+  MembershipDoc,
   PlayerDoc,
   PlayerMission,
 } from "../types";
@@ -52,7 +53,7 @@ interface CreateEventInput {
   name: string;
   groomName: string;
   hostName: string;
-  hostPassword: string;
+  eventPassword: string;
   bingoTasks?: string[];
   missionPool?: string[];
   chaosPool?: string[];
@@ -81,6 +82,7 @@ interface EventContextValue {
     password: string,
   ) => Promise<void>;
   rejoin: () => Promise<boolean>;
+  openMembership: (eventCode: string, playerId: string) => Promise<void>;
   leaveEvent: () => void;
   completeMission: (
     missionId: string,
@@ -248,16 +250,22 @@ export function EventProvider({ children }: { children: ReactNode }) {
   const createEvent = useCallback(
     async (input: CreateEventInput): Promise<string> => {
       if (!db) throw new Error("Firebase ist nicht konfiguriert.");
-      await ensureAnonymousAuth();
+      if (!auth?.currentUser || auth.currentUser.isAnonymous) {
+        throw new Error(
+          "Zum Erstellen eines Events musst du mit Google, Apple oder E-Mail angemeldet sein.",
+        );
+      }
       const code = randomId().slice(0, 5).toUpperCase();
       const hostAuthUid = uid();
       const hostPlayerId = normalizePlayerId(input.hostName);
+      const eventPasswordHash = await hashPassword(input.eventPassword, code);
       const eventDoc: EventDoc = {
         code,
         name: input.name,
         groomName: input.groomName,
         hostPlayerId,
         hostAuthUid,
+        eventPasswordHash,
         createdAt: Date.now(),
         bingoTasks: (input.bingoTasks ?? DEFAULT_BINGO_TASKS).slice(0, 25),
         missionPool: input.missionPool ?? DEFAULT_MISSION_POOL,
@@ -273,15 +281,9 @@ export function EventProvider({ children }: { children: ReactNode }) {
         Math.min(MISSIONS_PER_PLAYER, eventDoc.missionPool.length),
       ).map((text) => ({ id: randomId(), text, status: "open" as const }));
 
-      const passwordHash = await hashPassword(
-        input.hostPassword,
-        `${code}:${input.hostName.trim().toLowerCase()}`,
-      );
-
       const playerDoc: PlayerDoc = {
         id: hostPlayerId,
         name: input.hostName,
-        passwordHash,
         authUid: hostAuthUid,
         isGroom: false,
         approved: true,
@@ -299,6 +301,16 @@ export function EventProvider({ children }: { children: ReactNode }) {
         approved: true,
         playerId: hostPlayerId,
       });
+      const membership: MembershipDoc = {
+        eventCode: code,
+        eventName: input.name,
+        groomName: input.groomName,
+        playerId: hostPlayerId,
+        playerName: input.hostName,
+        role: "host",
+        joinedAt: Date.now(),
+      };
+      await setDoc(doc(db, "users", hostAuthUid, "events", code), membership);
 
       saveSession({ eventCode: code, playerId: hostPlayerId });
       setCurrentPlayerId(hostPlayerId);
@@ -309,7 +321,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
   );
 
   const joinEvent = useCallback(
-    async (code: string, playerName: string, isGroom: boolean, password: string) => {
+    async (code: string, playerName: string, isGroom: boolean, eventPassword: string) => {
       if (!db) throw new Error("Firebase ist nicht konfiguriert.");
       await ensureAnonymousAuth();
       const upperCode = code.trim().toUpperCase();
@@ -319,41 +331,27 @@ export function EventProvider({ children }: { children: ReactNode }) {
         throw new Error("Kein Event mit diesem Code gefunden.");
       }
       const eventData = eventSnap.data() as EventDoc;
-      const playerId = normalizePlayerId(trimmedName);
+      const enteredHash = await hashPassword(eventPassword, upperCode);
+      if (enteredHash !== eventData.eventPasswordHash) {
+        throw new Error("Falsches Event-Passwort.");
+      }
 
+      const playerId = normalizePlayerId(trimmedName);
+      const myUid = uid();
       const existingSnap = await getDoc(doc(db, "events", upperCode, "players", playerId));
 
       if (existingSnap.exists()) {
         const existing = existingSnap.data() as PlayerDoc;
-        const enteredHash = await hashPassword(
-          password,
-          `${upperCode}:${trimmedName.toLowerCase()}`,
-        );
-        if (enteredHash !== existing.passwordHash) {
+        if (existing.authUid !== myUid) {
           throw new Error(
-            `Der Name „${trimmedName}" ist in diesem Event schon vergeben. Falsches Passwort – bitte erneut versuchen oder einen anderen Namen wählen.`,
+            `Der Name „${trimmedName}" ist in diesem Event schon vergeben. Bitte einen anderen Namen wählen.`,
           );
-        }
-        const myUid = uid();
-        if (existing.approved) {
-          // Prove ownership of the password to self-grant this new device
-          // read access, without waiting on the host again.
-          await setDoc(doc(db, "events", upperCode, "approvedUids", myUid), {
-            approved: true,
-            viaPlayerId: playerId,
-            provenHash: enteredHash,
-          });
         }
         saveSession({ eventCode: upperCode, playerId: existing.id });
         setCurrentPlayerId(existing.id);
         startSubscription(upperCode, existing.id);
         return;
       }
-
-      const passwordHash = await hashPassword(
-        password,
-        `${upperCode}:${trimmedName.toLowerCase()}`,
-      );
 
       const missions: PlayerMission[] = pickRandom(
         eventData.missionPool,
@@ -363,8 +361,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
       const playerDoc: PlayerDoc = {
         id: playerId,
         name: trimmedName,
-        passwordHash,
-        authUid: uid(),
+        authUid: myUid,
         isGroom,
         approved: false,
         joinedAt: Date.now(),
@@ -377,9 +374,30 @@ export function EventProvider({ children }: { children: ReactNode }) {
         hangoverRating: null,
       };
       await setDoc(doc(db, "events", upperCode, "players", playerId), playerDoc);
+      if (auth?.currentUser && !auth.currentUser.isAnonymous) {
+        const membership: MembershipDoc = {
+          eventCode: upperCode,
+          eventName: eventData.name,
+          groomName: eventData.groomName,
+          playerId,
+          playerName: trimmedName,
+          role: "guest",
+          joinedAt: Date.now(),
+        };
+        await setDoc(doc(db, "users", myUid, "events", upperCode), membership);
+      }
       saveSession({ eventCode: upperCode, playerId });
       setCurrentPlayerId(playerId);
       startSubscription(upperCode, playerId);
+    },
+    [startSubscription],
+  );
+
+  const openMembership = useCallback(
+    async (eventCode: string, playerId: string) => {
+      saveSession({ eventCode, playerId });
+      setCurrentPlayerId(playerId);
+      startSubscription(eventCode, playerId);
     },
     [startSubscription],
   );
@@ -698,6 +716,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
     createEvent,
     joinEvent,
     rejoin,
+    openMembership,
     leaveEvent,
     completeMission,
     skipMission,

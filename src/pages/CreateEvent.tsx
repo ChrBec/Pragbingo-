@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useEvent } from "../state/EventContext";
+import { useAuthState } from "../state/AuthContext";
+import { AuthPanel } from "../components/AuthPanel";
 import { ListEditor } from "../components/ListEditor";
 import {
   DEFAULT_BINGO_TASKS,
@@ -12,12 +14,13 @@ import {
 
 export function CreateEvent() {
   const { createEvent } = useEvent();
+  const { isAnonymous, displayLabel } = useAuthState();
   const navigate = useNavigate();
 
   const [name, setName] = useState("JGA in Prag");
   const [groomName, setGroomName] = useState("");
   const [hostName, setHostName] = useState("");
-  const [hostPassword, setHostPassword] = useState("");
+  const [eventPassword, setEventPassword] = useState("");
   const [bingoTasks, setBingoTasks] = useState<string[]>(DEFAULT_BINGO_TASKS);
   const [missionPool, setMissionPool] = useState<string[]>(DEFAULT_MISSION_POOL);
   const [chaosPool, setChaosPool] = useState<string[]>(DEFAULT_CHAOS_POOL);
@@ -33,7 +36,7 @@ export function CreateEvent() {
   const canSubmit =
     groomName.trim() &&
     hostName.trim() &&
-    hostPassword.trim().length >= 4 &&
+    eventPassword.trim().length >= 4 &&
     name.trim() &&
     bingoValid &&
     missionPool.filter((m) => m.trim()).length >= 3 &&
@@ -48,7 +51,7 @@ export function CreateEvent() {
         name: name.trim(),
         groomName: groomName.trim(),
         hostName: hostName.trim(),
-        hostPassword: hostPassword.trim(),
+        eventPassword: eventPassword.trim(),
         bingoTasks: bingoTasks.map((t) => t.trim()),
         missionPool: missionPool.map((m) => m.trim()).filter(Boolean),
         chaosPool: chaosPool.map((c) => c.trim()).filter(Boolean),
@@ -64,6 +67,24 @@ export function CreateEvent() {
     }
   };
 
+  if (isAnonymous) {
+    return (
+      <div className="screen">
+        <Link to="/" className="back-link">
+          ← Zurück
+        </Link>
+        <h1>Event erstellen</h1>
+        <p className="muted">
+          Um ein Event anzulegen, meldest du dich einmalig mit einem echten
+          Konto an (Google, Apple oder E-Mail) – so kannst du später jederzeit
+          über „Meine Events" zurück ins Event, ohne Passwort erneut
+          einzugeben.
+        </p>
+        <AuthPanel />
+      </div>
+    );
+  }
+
   return (
     <div className="screen">
       <Link to="/" className="back-link">
@@ -74,6 +95,7 @@ export function CreateEvent() {
         Als Gastgeber:in legst du das Event an und bekommst einen Code, den du
         an alle Gäste verteilst.
       </p>
+      {displayLabel && <p className="hint">Angemeldet als {displayLabel}.</p>}
 
       <label className="field">
         <span>Event-Name</span>
@@ -96,18 +118,18 @@ export function CreateEvent() {
         />
       </label>
       <label className="field">
-        <span>Dein Passwort (mind. 4 Zeichen)</span>
+        <span>Event-Passwort (mind. 4 Zeichen)</span>
         <input
           type="password"
-          value={hostPassword}
-          onChange={(e) => setHostPassword(e.target.value)}
-          placeholder="Merk dir das für später"
+          value={eventPassword}
+          onChange={(e) => setEventPassword(e.target.value)}
+          placeholder="Gibst du an alle Gäste weiter"
         />
       </label>
       <p className="hint">
-        Mit Name + Passwort kannst du dich später wieder anmelden, falls du die
-        App schließt oder ein anderes Handy nutzt – dein Fortschritt bleibt
-        erhalten.
+        Dieses eine Passwort reicht für alle Gäste zum Beitreten – zusammen
+        mit ihrem eigenen Namen. Du bestätigst danach jede Person einzeln im
+        „Verwalten"-Tab.
       </p>
 
       <button

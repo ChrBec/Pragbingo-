@@ -35,8 +35,23 @@ sind beim Erstellen eines Events direkt in der App frei editierbar.
 3. Links auf **Build → Storage** → **Los geht's** → ebenfalls im Testmodus starten
    (für Foto-/Video-Uploads).
 4. Links auf **Build → Authentication** → **Los geht's** → Tab **Sign-in method**
-   → **Anonym** aktivieren (die App loggt jede:n Teilnehmer:in anonym ein,
-   niemand braucht ein Passwort).
+   → dort **vier** Anbieter aktivieren:
+   - **Anonym** (Gäste können ohne Konto beitreten)
+   - **Google** (Toggle an, Support-E-Mail auswählen, speichern)
+   - **E-Mail/Passwort** (Toggle an, speichern)
+   - **Apple** – nur nötig, wenn ihr Apple-Anmeldung anbieten wollt. Das
+     erfordert zusätzlich ein **kostenpflichtiges Apple Developer Program**
+     Konto (99 $/Jahr): In [developer.apple.com](https://developer.apple.com)
+     eine „Services ID" + einen „Sign in with Apple"-Key anlegen und die
+     Werte (Team-ID, Key-ID, privater Key, Services-ID) hier bei Firebase
+     eintragen. Ohne dieses Setup zeigt der „Mit Apple anmelden"-Button
+     einfach eine Fehlermeldung – Google und E-Mail funktionieren davon
+     unabhängig sofort.
+
+   Danach unter **Authentication → Settings → Authorized domains** auf
+   **„Domain hinzufügen"** klicken und `chrbec.github.io` eintragen (sonst
+   schlägt die Google/Apple-Anmeldung mit `auth/unauthorized-domain` fehl –
+   `localhost` ist für die lokale Entwicklung schon automatisch erlaubt).
 5. Zurück zur Projektübersicht (Zahnrad oben links → **Projekteinstellungen**) →
    unten bei **„Meine Apps“** auf das Web-Symbol `</>` klicken → App registrieren
    (Name z. B. „PragBingo Web“, **kein** Hosting nötig).
@@ -46,16 +61,14 @@ sind beim Erstellen eines Events direkt in der App frei editierbar.
 
 ### Firestore- & Storage-Regeln
 
-Die App ist bewusst ohne Login-Formular gebaut (jede:r tritt nur mit Namen +
-Event-Code bei). Damit **wirklich niemand ohne Bestätigung durch die
-Gastgeber:in die Event-Daten sehen kann** (Fotos, Namen, Punktestände –
-DSGVO-relevant), reicht "eingeloggt" allein nicht als Regel: Erst nach
-Bestätigung landet die eigene anonyme Nutzer-ID in einer
-`approvedUids`-Liste, und **nur** wer dort drinsteht, darf den Feed, die
-Teilnehmer:innen-Liste, den Chaos-Verlauf usw. lesen. Wer wartet, bekommt
-serverseitig (nicht nur in der Oberfläche!) ausschließlich Zugriff auf den
-eigenen Warte-Status – der Rest ist für unbestätigte Anfragen technisch
-unerreichbar, egal wie sie zugreifen.
+Zwei Zugriffsebenen: Ein Event-Passwort (von der Gastgeber:in vergeben,
+gilt für alle Gäste) regelt den *Beitritt*; eine zusätzliche
+`approvedUids`-Freischaltung durch die Gastgeber:in regelt, wer die
+Event-**Daten** (Fotos, Namen, Punktestände – DSGVO-relevant) überhaupt
+lesen darf. Wer wartet, bekommt serverseitig (nicht nur in der
+Oberfläche!) ausschließlich Zugriff auf den eigenen Warte-Status.
+Event-Erstellung ist außerdem an ein echtes Konto gebunden (Google, Apple
+oder E-Mail) – rein anonym kann man nur beitreten, nicht erstellen.
 
 Trage in **Firestore → Regeln** ein:
 
@@ -63,6 +76,11 @@ Trage in **Firestore → Regeln** ein:
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    match /users/{uid}/events/{eventCode} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
     match /events/{eventCode} {
 
       function isApproved() {
@@ -76,7 +94,9 @@ service cloud.firestore {
 
       allow get: if request.auth != null;
       allow list: if false;
-      allow create: if request.auth != null;
+      allow create: if request.auth != null &&
+        request.auth.token.firebase.sign_in_provider != 'anonymous' &&
+        request.resource.data.hostAuthUid == request.auth.uid;
       allow update, delete: if false;
 
       match /players/{playerId} {
@@ -92,7 +112,6 @@ service cloud.firestore {
           (
             isApproved() &&
             request.resource.data.approved == resource.data.approved &&
-            request.resource.data.passwordHash == resource.data.passwordHash &&
             request.resource.data.authUid == resource.data.authUid
           );
         allow delete: if isHost();
@@ -101,13 +120,7 @@ service cloud.firestore {
       match /approvedUids/{uidDoc} {
         allow get: if request.auth != null && request.auth.uid == uidDoc;
         allow list: if false;
-        allow create: if isHost() ||
-          (
-            request.auth.uid == uidDoc &&
-            request.resource.data.viaPlayerId is string &&
-            get(/databases/$(database)/documents/events/$(eventCode)/players/$(request.resource.data.viaPlayerId)).data.approved == true &&
-            get(/databases/$(database)/documents/events/$(eventCode)/players/$(request.resource.data.viaPlayerId)).data.passwordHash == request.resource.data.provenHash
-          );
+        allow create: if isHost();
         allow update: if false;
         allow delete: if isHost();
       }
@@ -130,19 +143,22 @@ service cloud.firestore {
 ```
 
 Kurz erklärt, was die Regeln tun:
-- **`events/{eventCode}`**: Der Event-Name selbst ist per Code lesbar (nötig
-  für die Warte-Seite und den Beitritts-Check), aber niemand kann alle
-  Events auflisten oder das Dokument nachträglich verändern.
-- **`players`**: Ein einzelnes Profil per exakter ID lesen (nötig für
-  Login/Beitritt) geht immer – aber die komplette Teilnehmer:innen-**Liste**
-  gibt es nur für bereits bestätigte Mitglieder. Neue Profile starten
-  zwingend mit `approved: false`, das lässt sich nicht durch einen
-  manipulierten Schreibzugriff umgehen (die Regel erzwingt es serverseitig).
-- **`approvedUids`**: Die eigentliche Freischaltung. Der Gastgeber schreibt
-  hier bei Bestätigung die passende Nutzer-ID hinein; ein zurückkehrendes
-  Gerät (gleicher Name + Passwort, aber neue anonyme Sitzung) darf sich
-  selbst freischalten – aber nur, wenn es das korrekte Passwort-Hash für ein
-  bereits bestätigtes Profil vorweisen kann.
+- **`users/{uid}/events`**: Die persönliche „Meine Events“-Liste – nur der
+  jeweilige Account selbst darf seine eigenen Einträge lesen/schreiben.
+- **`events/{eventCode}`**: Nur echte (nicht-anonyme) Konten dürfen Events
+  anlegen, und nur mit sich selbst als `hostAuthUid`. Der Event-Name ist per
+  Code lesbar (nötig für Warte-Seite/Beitritts-Check), aber niemand kann
+  alle Events auflisten oder ein Dokument nachträglich verändern.
+- **`players`**: Ein einzelnes Profil per exakter ID lesen (nötig für den
+  Beitritts-Check) geht immer – aber die komplette
+  Teilnehmer:innen-**Liste** gibt es nur für bereits bestätigte Mitglieder.
+  Neue Profile starten zwingend mit `approved: false`, erzwungen von der
+  Regel selbst, nicht nur vom Client.
+- **`approvedUids`**: Die eigentliche Freischaltung, ausschließlich von der
+  Gastgeber:in vergeben. Echte Konten (Google/Apple/E-Mail) behalten ihre
+  UID über Geräte hinweg – einmal freigeschaltet, bleibt der Zugriff also
+  automatisch bestehen, auch auf einem neuen Handy (das ist der Mechanismus
+  hinter „Meine Events“).
 - **`feed` / `chaos` / `log` / `ballots`**: Komplett gesperrt, solange man
   nicht in `approvedUids` steht.
 
@@ -254,27 +270,37 @@ Den Link könnt ihr direkt in die WhatsApp-Gruppe für den JGA teilen.
 
 ## Ablauf am Abend
 
-1. Gastgeber:in öffnet die App → **„Neues Event erstellen“** → Bräutigam-Name
-   eintragen, optional Bingo/Missionen/Chaos-Aufgaben anpassen → bekommt einen
-   **Event-Code**.
-2. Alle anderen öffnen den Link → **„Event beitreten“** → Code, eigenen Namen
-   und ein selbst gewähltes Passwort eingeben (Bräutigam markiert sich per
-   Checkbox). Das Passwort wird nur beim allerersten Beitritt mit diesem
-   Namen vergeben.
-3. Über den Abend: Missionen erledigen & Beweis hochladen, Bingo-Felder
+1. Gastgeber:in öffnet die App → **„Neues Event erstellen“** → meldet sich
+   (einmalig) mit Google, Apple oder E-Mail an → Bräutigam-Name, eigenen
+   Namen und ein **Event-Passwort** eintragen, optional Bingo/Missionen/
+   Chaos-Aufgaben anpassen → bekommt einen **Event-Code**.
+2. Gastgeber:in gibt Code **und** Event-Passwort an alle Gäste weiter (z. B.
+   in der WhatsApp-Gruppe).
+3. Alle anderen öffnen den Link → **„Event beitreten“** → Code,
+   Event-Passwort und eigenen Namen eingeben (Bräutigam markiert sich per
+   Checkbox) → landen zunächst auf einer Warteseite, bis die Gastgeber:in
+   sie im **„Verwalten“**-Tab bestätigt.
+4. Über den Abend: Missionen erledigen & Beweis hochladen, Bingo-Felder
    abhaken, den Chaos-Knopf drücken, Fotos im Feed teilen, abstimmen.
-4. Am Ende: **Abschlussbericht**-Tab zeigt automatisch Sieger:innen,
+5. Am Ende: **Abschlussbericht**-Tab zeigt automatisch Sieger:innen,
    Foto-Highlights und Kuriositäten-Statistiken.
-5. Am nächsten Morgen: **Kater**-Tab öffnen und anonym bewerten.
+6. Am nächsten Morgen: **Kater**-Tab öffnen und anonym bewerten.
 
 ### App geschlossen / anderes Handy?
 
 Auf demselben Gerät merkt sich die App den Login automatisch (Landing-Seite
-zeigt „Weiter zu deinem Event“). Falls der Browser-Speicher geleert wurde
-oder du ein anderes Handy nutzt: einfach nochmal **„Event beitreten“** mit
-**demselben Namen und Passwort** wie beim ersten Mal – die App erkennt den
-Namen wieder und meldet dich mit deinem bisherigen Fortschritt (Punkte,
-Missionen, Bingo-Feld) an, statt ein neues Profil anzulegen.
+zeigt „Weiter zu deinem Event“).
+
+Für einen nahtlosen Wechsel zwischen Handys **ohne** das Event-Passwort
+erneut einzugeben: beim Beitreten (oder vorher über „Anmelden“ auf der
+Startseite) mit Google, Apple oder E-Mail anmelden. Das Event erscheint
+danach automatisch unter **„Meine Events“** – ein Tap, und man ist wieder
+drin, mit vollem Punktestand und Fortschritt, egal auf welchem Gerät.
+
+Wer rein anonym beigetreten ist und Browser-Speicher/Gerät wechselt, muss
+sich mit Code + Event-Passwort + demselben Namen neu anmelden und landet
+dann als neue Anfrage erneut auf der Warteliste (da es ohne Konto keine
+sichere Möglichkeit gibt, dieselbe Person wiederzuerkennen).
 
 ---
 
@@ -291,8 +317,9 @@ Missionen, Bingo-Feld) an, statt ein neues Profil anzulegen.
 ```
 src/
   data/defaults.ts        Standard-Missionen, Bingo-Felder, Chaos-Aufgaben, Punkte
+  state/AuthContext.tsx   Echter Anmeldezustand (Google/Apple/E-Mail vs. anonym)
   state/EventContext.tsx  Zentrale Firestore-Anbindung & Spiellogik
-  pages/                  Landing, Event erstellen/beitreten, Dashboard-Shell
-  components/tabs/        Die 8 Haupt-Tabs der App
+  pages/                  Landing, Login, Meine Events, Event erstellen/beitreten, Dashboard-Shell
+  components/tabs/        Die 9 Haupt-Tabs der App
   lib/                    Hilfsfunktionen (IDs, Session, Bingo-Linien-Logik)
 ```
