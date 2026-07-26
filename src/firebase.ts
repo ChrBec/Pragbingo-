@@ -28,6 +28,11 @@ export const isFirebaseConfigured = Boolean(
   firebaseConfig.apiKey && firebaseConfig.projectId,
 );
 
+// Fixed identity for the single app-wide admin account. Firestore rules
+// grant admin access by checking request.auth.token.email against this
+// exact address - it never needs to be a real inbox.
+export const ADMIN_EMAIL = "app-admin@pragbingo.internal";
+
 export const app = isFirebaseConfigured
   ? getApps().length
     ? getApps()[0]!
@@ -168,4 +173,44 @@ export async function signOut() {
   await firebaseSignOut(auth);
   authReadyPromise = null;
   await ensureAnonymousAuth();
+}
+
+// Self-bootstrapping admin login: "admin" / "manage". The first successful
+// login with the exact bootstrap password creates the fixed admin account
+// (nobody else can grab that email afterwards - Firebase enforces unique
+// emails), every later login is a normal sign-in against it.
+export async function signInAsAppAdmin(password: string): Promise<void> {
+  const authInstance = requireAuth();
+  try {
+    await withTimeout(
+      signInWithEmailAndPassword(authInstance, ADMIN_EMAIL, password),
+      15000,
+      TIMEOUT_MESSAGE,
+    );
+    return;
+  } catch (e) {
+    const code = e && typeof e === "object" && "code" in e ? String((e as { code: unknown }).code) : "";
+    const accountMightNotExistYet =
+      code === "auth/user-not-found" || code === "auth/invalid-credential";
+    if (accountMightNotExistYet && password === "manage") {
+      try {
+        await withTimeout(
+          createUserWithEmailAndPassword(authInstance, ADMIN_EMAIL, password),
+          15000,
+          TIMEOUT_MESSAGE,
+        );
+        return;
+      } catch (signupError) {
+        throw new Error(describeAuthError(signupError));
+      }
+    }
+    if (code === "auth/invalid-credential" || code === "auth/wrong-password") {
+      throw new Error("Falsches Admin-Passwort.");
+    }
+    throw new Error(describeAuthError(e));
+  }
+}
+
+export function isAppAdminUser(user: { email?: string | null } | null | undefined): boolean {
+  return !!user && user.email === ADMIN_EMAIL;
 }

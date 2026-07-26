@@ -80,8 +80,17 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Fest verdrahtete App-Admin-Identität (Login "admin" / Passwort in der
+    // App). Kein Custom Claim nötig, da E-Mail/Passwort-Logins die E-Mail
+    // direkt unfälschbar im ID-Token mitliefern.
+    function isAppAdmin() {
+      return request.auth != null &&
+        request.auth.token.email == 'app-admin@pragbingo.internal';
+    }
+
     match /users/{uid}/events/{eventCode} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read, write: if request.auth != null &&
+        (request.auth.uid == uid || isAppAdmin());
     }
 
     match /events/{eventCode} {
@@ -96,15 +105,16 @@ service cloud.firestore {
       }
 
       allow get: if request.auth != null;
-      allow list: if false;
+      allow list: if isAppAdmin();
       allow create: if request.auth != null &&
         request.auth.token.firebase.sign_in_provider != 'anonymous' &&
         request.resource.data.hostAuthUid == request.auth.uid;
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if isAppAdmin();
 
       match /players/{playerId} {
         allow get: if request.auth != null;
-        allow list: if isApproved();
+        allow list: if isApproved() || isAppAdmin();
         allow create: if request.auth != null &&
           request.resource.data.authUid == request.auth.uid &&
           (
@@ -117,33 +127,33 @@ service cloud.firestore {
             request.resource.data.approved == resource.data.approved &&
             request.resource.data.authUid == resource.data.authUid
           );
-        allow delete: if isHost();
+        allow delete: if isHost() || isAppAdmin();
       }
 
       match /approvedUids/{uidDoc} {
-        allow get: if request.auth != null && request.auth.uid == uidDoc;
-        allow list: if false;
+        allow get: if request.auth != null && (request.auth.uid == uidDoc || isAppAdmin());
+        allow list: if isAppAdmin();
         allow create: if isHost();
         allow update: if false;
-        allow delete: if isHost();
+        allow delete: if isHost() || isAppAdmin();
       }
 
       match /feed/{postId} {
-        allow read, write: if isApproved();
+        allow read, write: if isApproved() || isAppAdmin();
       }
       match /chaos/{chaosId} {
-        allow read, write: if isApproved();
+        allow read, write: if isApproved() || isAppAdmin();
       }
       match /log/{logId} {
-        allow read, write: if isApproved();
+        allow read, write: if isApproved() || isAppAdmin();
       }
       match /ballots/{ballotId} {
-        allow read, write: if isApproved();
+        allow read, write: if isApproved() || isAppAdmin();
       }
       match /challenges/{challengeId} {
-        allow read, write: if isApproved();
+        allow read, write: if isApproved() || isAppAdmin();
         match /bids/{bidPlayerId} {
-          allow read, write: if isApproved();
+          allow read, write: if isApproved() || isAppAdmin();
         }
       }
     }
@@ -152,24 +162,31 @@ service cloud.firestore {
 ```
 
 Kurz erklärt, was die Regeln tun:
+- **`isAppAdmin()`**: Erkennt ausschließlich das eine feste Admin-Konto
+  (E-Mail `app-admin@pragbingo.internal`, wird beim ersten Login mit
+  Passwort `manage` automatisch angelegt) und schaltet ihm überall Lese-,
+  Auflist- und Lösch-Rechte frei – normale Gäste/Gastgeber:innen sind davon
+  unberührt.
 - **`users/{uid}/events`**: Die persönliche „Meine Events“-Liste – nur der
-  jeweilige Account selbst darf seine eigenen Einträge lesen/schreiben.
+  jeweilige Account selbst (oder der Admin) darf seine eigenen Einträge
+  lesen/schreiben.
 - **`events/{eventCode}`**: Nur echte (nicht-anonyme) Konten dürfen Events
   anlegen, und nur mit sich selbst als `hostAuthUid`. Der Event-Name ist per
-  Code lesbar (nötig für Warte-Seite/Beitritts-Check), aber niemand kann
-  alle Events auflisten oder ein Dokument nachträglich verändern.
+  Code lesbar (nötig für Warte-Seite/Beitritts-Check), niemand außer dem
+  Admin kann alle Events auflisten, niemand außer dem Admin kann ein Event
+  wieder löschen.
 - **`players`**: Ein einzelnes Profil per exakter ID lesen (nötig für den
   Beitritts-Check) geht immer – aber die komplette
-  Teilnehmer:innen-**Liste** gibt es nur für bereits bestätigte Mitglieder.
-  Neue Profile starten zwingend mit `approved: false`, erzwungen von der
-  Regel selbst, nicht nur vom Client.
+  Teilnehmer:innen-**Liste** gibt es nur für bereits bestätigte Mitglieder
+  (oder den Admin). Neue Profile starten zwingend mit `approved: false`,
+  erzwungen von der Regel selbst, nicht nur vom Client.
 - **`approvedUids`**: Die eigentliche Freischaltung, ausschließlich von der
-  Gastgeber:in vergeben. Echte Konten (Google/Apple/E-Mail) behalten ihre
-  UID über Geräte hinweg – einmal freigeschaltet, bleibt der Zugriff also
-  automatisch bestehen, auch auf einem neuen Handy (das ist der Mechanismus
-  hinter „Meine Events“).
+  Gastgeber:in (oder dem Admin) vergeben. Echte Konten (Google/Apple/E-Mail)
+  behalten ihre UID über Geräte hinweg – einmal freigeschaltet, bleibt der
+  Zugriff also automatisch bestehen, auch auf einem neuen Handy (das ist der
+  Mechanismus hinter „Meine Events“).
 - **`feed` / `chaos` / `log` / `ballots` / `challenges`**: Komplett gesperrt,
-  solange man nicht in `approvedUids` steht.
+  solange man nicht in `approvedUids` steht – außer für den Admin.
 
 > **Hinweis zur „verdeckten“ Abstimmung bei Challenges:** Die Gebote werden
 > in der Oberfläche erst nach Abschluss angezeigt – rein technisch könnte
@@ -192,6 +209,41 @@ service firebase.storage {
   }
 }
 ```
+
+Für Storage ist keine Änderung nötig – „jede:r angemeldete Person“ deckt den
+Admin schon mit ab.
+
+### Admin-Bereich
+
+Unter `#/admin` gibt es einen separaten Login („Benutzername“ ist fest
+`admin`, Passwort frei wählbar). Der Admin-Zugang ist unabhängig von
+einzelnen Events und für die Person gedacht, die die App insgesamt
+betreut:
+
+- **Login**: Beim allerersten Login mit dem Passwort `manage` wird das
+  Admin-Konto automatisch angelegt (kein manueller Schritt in der Firebase
+  Console nötig). Ab dann ist es ein normales E-Mail/Passwort-Konto –
+  danach ändert sich nichts mehr automatisch, das Passwort bleibt `manage`,
+  bis du es (optional) in der Firebase Console unter **Authentication →
+  Users** manuell zurücksetzt.
+- **Dashboard**: Liste aller Events mit Teilnehmer:innenzahl. Beim Öffnen
+  eines Events werden alle Teilnehmer:innen mit Punktestand, Beitrittsdatum
+  und verbrauchtem Speicher (Anzahl Fotos/Videos + MB, berechnet aus den
+  tatsächlichen Datei­größen in Storage) angezeigt.
+- **DSGVO-Löschung**: Pro Person lässt sich „Nutzerdaten löschen“ auslösen –
+  entfernt unwiderruflich alle Fotos/Videos (inkl. Storage-Dateien), Feed-
+  Beiträge, Log-Einträge, Chaos-Zuweisungen, abgegebenen Stimmen,
+  Challenge-Gebote/-Gewinne, die Freischaltung und das Profil dieser Person
+  in genau diesem Event. Für ganze Events (z. B. wenn die Gastgeber:in
+  selbst betroffen ist) gibt es zusätzlich „Ganzes Event löschen“.
+- **Grenze der Löschung**: Aus einer reinen Client-App heraus lässt sich das
+  Firebase-**Auth-Konto** (die E-Mail-Adresse/Anmeldedaten) einer anderen
+  Person technisch nicht löschen – das bräuchte eine Cloud Function mit dem
+  Firebase Admin SDK, was außerhalb dieses Setups liegt. Alle
+  personenbezogenen **Inhalte** (Name, Fotos, Punkte, Missionen, Beiträge,
+  Stimmen) werden aber vollständig entfernt. Falls auch das Auth-Konto weg
+  soll, geht das manuell in der Firebase Console unter **Authentication →
+  Users**.
 
 Das reicht für einen privaten JGA-Abend im Freundeskreis (jede:r mit
 Event-Code kann mitspielen, aber niemand von außen ohne Code).

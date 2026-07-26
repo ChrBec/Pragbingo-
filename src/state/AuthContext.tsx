@@ -6,12 +6,13 @@ import {
   type ReactNode,
 } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { auth, ensureAnonymousAuth, getLastAuthError } from "../firebase";
+import { auth, ensureAnonymousAuth, getLastAuthError, isAppAdminUser } from "../firebase";
 
 interface AuthContextValue {
   ready: boolean;
   user: User | null;
   isAnonymous: boolean;
+  isAppAdmin: boolean;
   displayLabel: string | null;
   redirectError: string | null;
 }
@@ -34,9 +35,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const isAnonymous = !user || user.isAnonymous;
+  const isAppAdmin = isAppAdminUser(user);
   const displayLabel = user && !user.isAnonymous ? user.displayName || user.email || "Konto" : null;
 
-  const value: AuthContextValue = { ready, user, isAnonymous, displayLabel, redirectError };
+  const value: AuthContextValue = {
+    ready,
+    user,
+    isAnonymous,
+    isAppAdmin,
+    displayLabel,
+    redirectError,
+  };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

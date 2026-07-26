@@ -6,6 +6,7 @@ import { CreateEvent } from "./pages/CreateEvent";
 import { JoinEvent } from "./pages/JoinEvent";
 import { Login } from "./pages/Login";
 import { MyEvents } from "./pages/MyEvents";
+import { AdminPage } from "./pages/AdminPage";
 import { Dashboard } from "./pages/Dashboard";
 import { MissionsTab } from "./components/tabs/MissionsTab";
 import { BingoTab } from "./components/tabs/BingoTab";
@@ -30,6 +31,7 @@ function App() {
             <Route path="/join/:code" element={<JoinEvent />} />
             <Route path="/login" element={<Login />} />
             <Route path="/my-events" element={<MyEvents />} />
+            <Route path="/admin" element={<AdminPage />} />
             <Route path="/app" element={<Dashboard />}>
               <Route index element={<Navigate to="missions" replace />} />
               <Route path="missions" element={<MissionsTab />} />
