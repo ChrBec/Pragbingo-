@@ -61,10 +61,6 @@ export function Landing() {
           </>
         )}
       </div>
-
-      <Link className="small muted" to="/admin">
-        ⚙️ Admin
-      </Link>
     </div>
   );
 }

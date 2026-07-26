@@ -214,9 +214,6 @@ export async function deleteUserFromEvent(
   return { deletedFiles, deletedDocs };
 }
 
-// Full cascade delete of an event - used when the person being erased is the
-// host (without them the event has no owner) or when an admin wants to wipe
-// a whole event outright.
 export function formatBytes(bytes: number): string {
   if (bytes <= 0) return "0 MB";
   const mb = bytes / (1024 * 1024);
@@ -224,6 +221,9 @@ export function formatBytes(bytes: number): string {
   return `${mb.toFixed(1)} MB`;
 }
 
+// Full cascade delete of an event - used when the person being erased is the
+// host (without them the event has no owner) or when an admin wants to wipe
+// a whole event outright.
 export async function deleteEntireEvent(eventCode: string): Promise<void> {
   const database = requireDb();
   const playersSnap = await getDocs(collection(database, "events", eventCode, "players"));
@@ -241,4 +241,94 @@ export async function deleteEntireEvent(eventCode: string): Promise<void> {
   }
 
   await deleteDoc(doc(database, "events", eventCode));
+}
+
+export interface AdminUserMembership {
+  eventCode: string;
+  eventName: string;
+  playerId: string;
+  playerName: string;
+  points: number;
+  approved: boolean;
+  isHost: boolean;
+  joinedAt: number;
+}
+
+export interface AdminUserSummary {
+  authUid: string;
+  name: string;
+  totalPoints: number;
+  memberships: AdminUserMembership[];
+}
+
+// Aggregates every player profile across every event by their authUid, since
+// there is no separate global user directory - Firebase Auth's own user list
+// isn't reachable from a client-only app (that needs the Admin SDK), so the
+// player subcollections are the only source of truth we have.
+export async function listAllAdminUsers(): Promise<AdminUserSummary[]> {
+  const database = requireDb();
+  const eventsSnap = await getDocs(collection(database, "events"));
+  const usersByUid = new Map<string, AdminUserSummary>();
+
+  await Promise.all(
+    eventsSnap.docs.map(async (eventDoc) => {
+      const eventData = eventDoc.data() as EventDoc;
+      const playersSnap = await getDocs(
+        collection(database, "events", eventData.code, "players"),
+      );
+      for (const playerDoc of playersSnap.docs) {
+        const p = playerDoc.data() as PlayerDoc;
+        const membership: AdminUserMembership = {
+          eventCode: eventData.code,
+          eventName: eventData.name,
+          playerId: p.id,
+          playerName: p.name,
+          points: p.points,
+          approved: p.approved,
+          isHost: p.id === eventData.hostPlayerId,
+          joinedAt: p.joinedAt,
+        };
+        const existing = usersByUid.get(p.authUid);
+        if (existing) {
+          existing.memberships.push(membership);
+          existing.totalPoints += p.points;
+        } else {
+          usersByUid.set(p.authUid, {
+            authUid: p.authUid,
+            name: p.name,
+            totalPoints: p.points,
+            memberships: [membership],
+          });
+        }
+      }
+    }),
+  );
+
+  return Array.from(usersByUid.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function updatePlayerInEvent(
+  eventCode: string,
+  playerId: string,
+  updates: { name?: string; points?: number },
+): Promise<void> {
+  const database = requireDb();
+  const data: Record<string, unknown> = {};
+  if (updates.name !== undefined) data.name = updates.name;
+  if (updates.points !== undefined) data.points = updates.points;
+  if (Object.keys(data).length === 0) return;
+  await updateDoc(doc(database, "events", eventCode, "players", playerId), data);
+}
+
+// Deletes a person's data from every event they're part of. Events where
+// they're the host get fully cascade-deleted (a host-less event can't be
+// used anymore anyway); everywhere else only their own data is removed.
+export async function deleteUserEverywhere(user: AdminUserSummary): Promise<void> {
+  for (const m of user.memberships) {
+    if (m.isHost) {
+      await deleteEntireEvent(m.eventCode).catch(() => {});
+    } else {
+      await deleteUserFromEvent(m.eventCode, m.playerId, user.authUid).catch(() => {});
+    }
+  }
 }

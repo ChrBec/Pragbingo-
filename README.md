@@ -122,6 +122,7 @@ service cloud.firestore {
             (isHost() && request.resource.data.approved == true)
           );
         allow update: if isHost() ||
+          isAppAdmin() ||
           (
             isApproved() &&
             request.resource.data.approved == resource.data.approved &&
@@ -218,7 +219,9 @@ Admin schon mit ab.
 Unter `#/admin` gibt es einen separaten Login („Benutzername“ ist fest
 `admin`, Passwort frei wählbar). Der Admin-Zugang ist unabhängig von
 einzelnen Events und für die Person gedacht, die die App insgesamt
-betreut:
+betreut. Es gibt dafür **bewusst keinen sichtbaren Link** in der App –
+`https://<dein-github-username>.github.io/Pragbingo-/#/admin` direkt
+aufrufen bzw. als Lesezeichen speichern.
 
 - **Login**: Beim allerersten Login mit dem Passwort `manage` wird das
   Admin-Konto automatisch angelegt (kein manueller Schritt in der Firebase
@@ -226,16 +229,22 @@ betreut:
   danach ändert sich nichts mehr automatisch, das Passwort bleibt `manage`,
   bis du es (optional) in der Firebase Console unter **Authentication →
   Users** manuell zurücksetzt.
-- **Dashboard**: Liste aller Events mit Teilnehmer:innenzahl. Beim Öffnen
-  eines Events werden alle Teilnehmer:innen mit Punktestand, Beitrittsdatum
-  und verbrauchtem Speicher (Anzahl Fotos/Videos + MB, berechnet aus den
-  tatsächlichen Datei­größen in Storage) angezeigt.
-- **DSGVO-Löschung**: Pro Person lässt sich „Nutzerdaten löschen“ auslösen –
-  entfernt unwiderruflich alle Fotos/Videos (inkl. Storage-Dateien), Feed-
-  Beiträge, Log-Einträge, Chaos-Zuweisungen, abgegebenen Stimmen,
-  Challenge-Gebote/-Gewinne, die Freischaltung und das Profil dieser Person
-  in genau diesem Event. Für ganze Events (z. B. wenn die Gastgeber:in
-  selbst betroffen ist) gibt es zusätzlich „Ganzes Event löschen“.
+- **Reiter „Events“**: Liste aller Events mit Teilnehmer:innenzahl, durchsuchbar
+  per Event-Code oder -Name. Beim Öffnen eines Events werden alle
+  Teilnehmer:innen mit Punktestand, Beitrittsdatum und verbrauchtem Speicher
+  (Anzahl Fotos/Videos + MB, berechnet aus den tatsächlichen
+  Datei­größen in Storage) angezeigt, inkl. „Nutzerdaten löschen“ pro Person
+  und „Ganzes Event löschen“.
+- **Reiter „Nutzer:innen“**: Alle Personen app-weit, aggregiert über ihre
+  Firebase-Auth-UID (durchsuchbar per Name oder UID) – mit allen Events, in
+  denen sie mitspielen. Pro Mitgliedschaft lassen sich Name und Punktestand
+  direkt bearbeiten, und „Überall löschen“ entfernt eine Person aus jedem
+  Event auf einmal (Events, in denen sie Host ist, werden dabei komplett
+  gelöscht).
+- **DSGVO-Löschung im Detail**: „Nutzerdaten löschen“ entfernt unwiderruflich
+  alle Fotos/Videos (inkl. Storage-Dateien), Feed-Beiträge, Log-Einträge,
+  Chaos-Zuweisungen, abgegebenen Stimmen, Challenge-Gebote/-Gewinne, die
+  Freischaltung und das Profil dieser Person in einem Event.
 - **Grenze der Löschung**: Aus einer reinen Client-App heraus lässt sich das
   Firebase-**Auth-Konto** (die E-Mail-Adresse/Anmeldedaten) einer anderen
   Person technisch nicht löschen – das bräuchte eine Cloud Function mit dem
@@ -244,6 +253,10 @@ betreut:
   Stimmen) werden aber vollständig entfernt. Falls auch das Auth-Konto weg
   soll, geht das manuell in der Firebase Console unter **Authentication →
   Users**.
+- Es gibt auch keine zentrale Liste aller Nutzer:innen in Firebase Auth
+  selbst (das bräuchte ebenfalls das Admin SDK) – der Reiter „Nutzer:innen“
+  leitet die Liste stattdessen aus allen Teilnehmer:innen-Profilen über alle
+  Events her.
 
 Das reicht für einen privaten JGA-Abend im Freundeskreis (jede:r mit
 Event-Code kann mitspielen, aber niemand von außen ohne Code).
