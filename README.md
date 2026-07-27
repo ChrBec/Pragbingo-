@@ -1,4 +1,4 @@
-# 🥂 PragBingo – der interaktive JGA-Begleiter
+# 🥂 OurEvent – der interaktive JGA-Begleiter
 
 Eine mobile Web-App für den Junggesellenabschied: geheime Missionen, ein
 5×5-JGA-Bingo, ein Chaos-Knopf, ein Foto-Feed mit Live-Rangliste, Abstimmungen,
@@ -57,7 +57,7 @@ sind beim Erstellen eines Events direkt in der App frei editierbar.
    `localhost` ist für die lokale Entwicklung schon automatisch erlaubt).
 5. Zurück zur Projektübersicht (Zahnrad oben links → **Projekteinstellungen**) →
    unten bei **„Meine Apps“** auf das Web-Symbol `</>` klicken → App registrieren
-   (Name z. B. „PragBingo Web“, **kein** Hosting nötig).
+   (Name z. B. „OurEvent Web“, **kein** Hosting nötig).
 6. Du bekommst ein `firebaseConfig`-Objekt mit `apiKey`, `authDomain`,
    `projectId`, `storageBucket`, `messagingSenderId`, `appId` – diese 6 Werte
    brauchst du gleich.
@@ -220,7 +220,7 @@ Unter `#/admin` gibt es einen separaten Login („Benutzername“ ist fest
 `admin`, Passwort frei wählbar). Der Admin-Zugang ist unabhängig von
 einzelnen Events und für die Person gedacht, die die App insgesamt
 betreut. Es gibt dafür **bewusst keinen sichtbaren Link** in der App –
-`https://<dein-github-username>.github.io/Pragbingo-/#/admin` direkt
+`https://<dein-github-username>.github.io/OurEvent/#/admin` direkt
 aufrufen bzw. als Lesezeichen speichern.
 
 - **Login**: Beim allerersten Login mit dem Passwort `manage` wird das
@@ -334,9 +334,9 @@ baut (inkl. der committeten `.env`) und auf GitHub Pages veröffentlicht.
 2. Diesen Branch nach `main` mergen (oder direkt auf `main` pushen) – der
    Workflow baut die App automatisch und veröffentlicht sie unter:
 
-   `https://<dein-github-name>.github.io/Pragbingo-/`
+   `https://<dein-github-name>.github.io/OurEvent/`
 
-   (Der Pfad `/Pragbingo-/` ist in `vite.config.ts` als `base` hinterlegt und
+   (Der Pfad `/OurEvent/` ist in `vite.config.ts` als `base` hinterlegt und
    muss zum Repo-Namen passen – falls du das Repo umbenennst, dort anpassen.)
 
 > **Wichtig bei privatem Repo:** GitHub Pages lässt sich auf einem

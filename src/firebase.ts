@@ -104,29 +104,34 @@ const PENDING_REDIRECT_KEY = "pragbingo_pending_oauth_redirect";
 // signInWithGoogle/signInWithApple below) before deciding whether to fall
 // back to an anonymous session - otherwise a redirect return could race
 // with a fresh anonymous sign-in and silently discard the real login.
+// getRedirectResult() is web-only machinery (it reads browser redirect
+// state) - calling it inside the Capacitor native shell isn't meaningful
+// and throws auth/argument-error there, so skip it entirely on native.
 export function ensureAnonymousAuth(): Promise<void> {
   if (!auth) return Promise.resolve();
   if (authReadyPromise) return authReadyPromise;
   authReadyPromise = (async () => {
-    let pendingProvider: string | null = null;
-    try {
-      pendingProvider = sessionStorage.getItem(PENDING_REDIRECT_KEY);
-    } catch {
-      // sessionStorage can throw in locked-down privacy modes - ignore
-    }
-    try {
-      const result = await withTimeout(getRedirectResult(auth!), 10000, TIMEOUT_MESSAGE);
-      if (pendingProvider && (!result || !result.user || result.user.isAnonymous)) {
-        lastAuthError =
-          "Die Anmeldung wurde nicht abgeschlossen: dein Browser hat die Rückkehr von Google/Apple offenbar blockiert oder die Sitzung dabei verworfen (z. B. Safari 'Cross-Website-Tracking verhindern' oder ein anderer Tracking-Schutz - das betrifft speziell diese Weiterleitung über eine andere Domain). Bitte nochmal versuchen, einen anderen Browser probieren, oder stattdessen mit E-Mail anmelden.";
-      }
-    } catch (e) {
-      lastAuthError = describeAuthError(e);
-    } finally {
+    if (!Capacitor.isNativePlatform()) {
+      let pendingProvider: string | null = null;
       try {
-        sessionStorage.removeItem(PENDING_REDIRECT_KEY);
+        pendingProvider = sessionStorage.getItem(PENDING_REDIRECT_KEY);
       } catch {
-        // ignore
+        // sessionStorage can throw in locked-down privacy modes - ignore
+      }
+      try {
+        const result = await withTimeout(getRedirectResult(auth!), 10000, TIMEOUT_MESSAGE);
+        if (pendingProvider && (!result || !result.user || result.user.isAnonymous)) {
+          lastAuthError =
+            "Die Anmeldung wurde nicht abgeschlossen: dein Browser hat die Rückkehr von Google/Apple offenbar blockiert oder die Sitzung dabei verworfen (z. B. Safari 'Cross-Website-Tracking verhindern' oder ein anderer Tracking-Schutz - das betrifft speziell diese Weiterleitung über eine andere Domain). Bitte nochmal versuchen, einen anderen Browser probieren, oder stattdessen mit E-Mail anmelden.";
+        }
+      } catch (e) {
+        lastAuthError = describeAuthError(e);
+      } finally {
+        try {
+          sessionStorage.removeItem(PENDING_REDIRECT_KEY);
+        } catch {
+          // ignore
+        }
       }
     }
     await new Promise<void>((resolve) => {

@@ -22,7 +22,7 @@ export function Landing() {
     <div className="screen center-screen">
       <div className="brand">
         <div className="brand-emoji">🥂</div>
-        <h1>PragBingo</h1>
+        <h1>OurEvent</h1>
         <p className="tagline">Der JGA-Begleiter für Prag &amp; jede andere Stadt</p>
       </div>
 

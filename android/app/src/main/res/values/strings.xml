@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">PragBingo</string>
-    <string name="title_activity_main">PragBingo</string>
+    <string name="app_name">OurEvent</string>
+    <string name="title_activity_main">OurEvent</string>
     <string name="package_name">com.chrbec.pragbingo</string>
     <string name="custom_url_scheme">com.chrbec.pragbingo</string>
 </resources>
