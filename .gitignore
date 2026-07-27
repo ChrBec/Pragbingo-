@@ -12,6 +12,7 @@ dist
 dist-ssr
 dist-capacitor
 *.local
+.env
 .env.local
 
 # Capacitor: native project folders are committed (android/, ios/), but not

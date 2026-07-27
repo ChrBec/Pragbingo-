@@ -305,21 +305,27 @@ werden muss.
 
 ```bash
 npm install
+cp .env.example .env   # dann echte Werte aus der Firebase Console eintragen
 npm run dev
 ```
 
-Die Firebase-Konfiguration liegt bereits in `.env` im Repo (siehe Hinweis
-unten, warum das hier unbedenklich ist). Öffne die angezeigte URL auf dem
-Handy (im selben WLAN) oder im Browser.
+`.env` ist bewusst **nicht** Teil des Repos (steht in `.gitignore`) – jede
+Person, die lokal entwickelt, legt sich ihre eigene an. Öffne die
+angezeigte URL auf dem Handy (im selben WLAN) oder im Browser.
 
-> **Warum eine `.env` mit echten Werten im Repo liegt:** Der Firebase
-> „apiKey“ ist – anders als der Name suggeriert – kein Geheimnis. Er landet
+> **Zur Einordnung:** Der Firebase-„apiKey“ ist – anders als der Name
+> suggeriert – kein klassisches Geheimnis, das Zugriff gewährt. Er landet
 > bei jedem Firebase-Webprojekt sowieso sichtbar im ausgelieferten
-> JavaScript-Bundle, das jede:r Website-Besucher:in im Browser einsehen kann.
-> Die eigentliche Zugriffskontrolle passiert über die Firestore-/Storage-
-> Regeln oben (nur `request.auth != null`, also nur anonym eingeloggte
-> Teilnehmer:innen mit Event-Code). Ihn im Repo zu committen ist deshalb
-> Standard-Vorgehen für Firebase-Webapps, keine Sicherheitslücke.
+> JavaScript-Bundle, das jede:r Website-Besucher:in im Browser einsehen
+> kann; die eigentliche Zugriffskontrolle passiert über die
+> Firestore-/Storage-Regeln oben. Trotzdem lohnt es sich, ihn nicht
+> unnötig in der Versionierung liegen zu haben – GitHub meldet sowas per
+> Secret-Scanning, und ein frei kopierbarer Key kann für Kontingent-
+> Missbrauch genutzt werden. Deshalb: lokal per `.env` (gitignored), für
+> das automatische Deployment per GitHub-Secrets (siehe unten). Zusätzlich
+> lohnt sich, den Key in der
+> [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+> auf die tatsächlich benötigten APIs einzuschränken.
 
 ---
 
@@ -327,11 +333,19 @@ Handy (im selben WLAN) oder im Browser.
 
 Das Repo enthält bereits einen GitHub-Actions-Workflow
 (`.github/workflows/deploy.yml`), der bei jedem Push auf `main` automatisch
-baut (inkl. der committeten `.env`) und auf GitHub Pages veröffentlicht.
+baut und auf GitHub Pages veröffentlicht. Die Firebase-Konfiguration kommt
+dabei **nicht** aus einer committeten `.env`, sondern aus GitHub-Secrets,
+die der Build-Schritt als Umgebungsvariablen einliest.
 
-1. **Pages aktivieren**: Repo → **Settings → Pages** → bei „Build and
+1. **Secrets eintragen**: Repo → **Settings → Secrets and variables →
+   Actions → New repository secret** → für jeden der sechs Werte aus
+   deiner lokalen `.env` einen Secret mit demselben Namen anlegen:
+   `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`,
+   `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`,
+   `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`.
+2. **Pages aktivieren**: Repo → **Settings → Pages** → bei „Build and
    deployment“ als **Source** „**GitHub Actions**“ auswählen.
-2. Diesen Branch nach `main` mergen (oder direkt auf `main` pushen) – der
+3. Diesen Branch nach `main` mergen (oder direkt auf `main` pushen) – der
    Workflow baut die App automatisch und veröffentlicht sie unter:
 
    `https://<dein-github-name>.github.io/OurEvent/`
@@ -341,11 +355,10 @@ baut (inkl. der committeten `.env`) und auf GitHub Pages veröffentlicht.
 
 > **Wichtig bei privatem Repo:** GitHub Pages lässt sich auf einem
 > kostenlosen GitHub-Account nur aus **öffentlichen** Repos veröffentlichen
-> (private Repos + Pages brauchen GitHub Pro/Team). Da der Firebase-Key wie
-> oben beschrieben ohnehin nicht geheim ist, kannst du das Repo vor dem
-> Deployment gefahrlos wieder auf „Public“ stellen – dadurch wird nichts
-> preisgegeben, was nicht sowieso im ausgelieferten Bundle stünde. Der
-> eigentliche Schutz eures Spielstands sind die Firestore-/Storage-Regeln.
+> (private Repos + Pages brauchen GitHub Pro/Team). Mit den Secrets statt
+> einer committeten `.env` kannst du das Repo bedenkenlos auf „Public“
+> stellen. Der eigentliche Schutz eures Spielstands sind ohnehin die
+> Firestore-/Storage-Regeln, nicht die Sichtbarkeit des Repos.
 
 Den Link könnt ihr direkt in die WhatsApp-Gruppe für den JGA teilen.
 
