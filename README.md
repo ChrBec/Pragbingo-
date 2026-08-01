@@ -220,7 +220,7 @@ Unter `#/admin` gibt es einen separaten Login („Benutzername“ ist fest
 `admin`, Passwort frei wählbar). Der Admin-Zugang ist unabhängig von
 einzelnen Events und für die Person gedacht, die die App insgesamt
 betreut. Es gibt dafür **bewusst keinen sichtbaren Link** in der App –
-`https://<dein-github-username>.github.io/Pragbingo-/#/admin` direkt
+`https://<dein-github-username>.github.io/OurEvent/#/admin` direkt
 aufrufen bzw. als Lesezeichen speichern.
 
 - **Login**: Beim allerersten Login mit dem Passwort `manage` wird das
@@ -348,13 +348,10 @@ die der Build-Schritt als Umgebungsvariablen einliest.
 3. Diesen Branch nach `main` mergen (oder direkt auf `main` pushen) – der
    Workflow baut die App automatisch und veröffentlicht sie unter:
 
-   `https://<dein-github-name>.github.io/Pragbingo-/`
+   `https://<dein-github-name>.github.io/OurEvent/`
 
-   (Der Pfad `/Pragbingo-/` ist in `vite.config.ts` als `base` hinterlegt und
-   muss exakt zum aktuellen GitHub-Repo-Namen passen – unabhängig vom
-   Anzeigenamen „OurEvent" in der App selbst. Falls du das Repo umbenennst,
-   **muss** `base` in derselben Änderung mit angepasst werden, sonst bleibt
-   die Seite leer, weil alle Assets 404en.)
+   (Der Pfad `/OurEvent/` ist in `vite.config.ts` als `base` hinterlegt und
+   muss zum Repo-Namen passen – falls du das Repo umbenennst, dort anpassen.)
 
 > **Wichtig bei privatem Repo:** GitHub Pages lässt sich auf einem
 > kostenlosen GitHub-Account nur aus **öffentlichen** Repos veröffentlichen
